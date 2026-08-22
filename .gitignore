@@ -3,6 +3,8 @@ nimcache/
 *.exe
 *_r
 htmldocs/
+.out
+.o
 
 # Nimble
 nimbledeps/
