@@ -1,0 +1,15 @@
+# Nim
+nimcache/
+*.exe
+*_r
+htmldocs/
+
+# Nimble
+nimbledeps/
+*.nims
+
+# OS/editor
+.DS_Store
+*.swp
+.vscode
+

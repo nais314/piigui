@@ -1,0 +1,55 @@
+if this.parent == nil: sdl.getSize(this.pgui.window, ww, wh)
+
+  result.w = this.w
+  result.h = this.h
+
+if this.style.padding > -1:
+
+availW
+availH
+  let # save original values for calculations
+    origiW = availW
+    origiH = availH
+
+
+if this.style.flexDirection == fdRow:#! ---- fdRow
+  for elem in layer.elems:
+    case elem.h_unit:
+      if lineH < elem.h: lineH = elem.h #TODO boundaries and sanity check
+    case elem.w_unit:
+  if line.len > 0: postProcessRow():: # post process new/last row
+    totalH += lineH
+    article.lines.add(line)
+    for i_elem in 0..line.high:
+      case line[i_elem].h_unit
+        of muAuto, muStretch: # if user not assigned height, stretch to lineH
+      case this.style.alignItems:
+      if line[i_elem].style.flexGrow > 0:
+    if this.style.flexGrowFrom <= (lineW / origiW * 100)
+  distributeContent()::
+    if this.style.flexDirection == fdRow:
+      case this.style.alignContent:
+      case this.style.justifyContent:
+    if this.style.flexDirection == fdColumn:#!............
+      case this.style.alignContent:
+      case this.style.justifyContent:
+#!................................
+elif this.style.flexDirection == fdColumn:#!---- fdColumn
+  for elem in layer.elems:
+    case elem.w_unit:
+    case elem.h_unit:
+  if line.len > 0: postProcessColumn()
+    totalH += lineH
+    article.lines.add(line)
+    for i_elem in 0..line.high:
+      case line[i_elem].h_unit
+      case this.style.alignItems:
+      if line[i_elem].style.flexGrow > 0:
+    if this.style.flexGrowFrom <= (lineW / origiW * 100)
+  distributeContent()::
+    if this.style.flexDirection == fdRow:
+      case this.style.alignContent:
+      case this.style.justifyContent:
+    if this.style.flexDirection == fdColumn:#!............
+      case this.style.alignContent:
+      case this.style.justifyContent:
