@@ -637,7 +637,7 @@ proc newWindow*(pgui:Pgui,
                 y: cint = sdl.SDL_WINDOWPOS_UNDEFINED,
                 w: cint = 640, h: cint = 480,
                 flags: uint32 = DefaultWindowFlags,
-                styleSheetTbl: StyleSheetTbl
+                styleSheetTbl: StyleSheetRef_Tbl
                 ): PgWindow =
   ## creates a PgWindow for an Pgui
   ## creates rootElem for PgWindow

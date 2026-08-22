@@ -136,7 +136,7 @@ proc newSimpleWindow*(
                 y: cint = sdl.SDL_WINDOWPOS_UNDEFINED,
                 w: cint = 640, h: cint = 480,
                 flags: cuint = DefaultWindowFlags,
-                styleSheetTbl: StyleSheetTbl,
+                styleSheetTbl: StyleSheetRef_Tbl,
                 recalcFun: proc(this:DivRef, layer:Layer):tuple[w,h:int] = recalcFlex
                 ): PgWindow =
   ## creates a PgWindow for a Pgui

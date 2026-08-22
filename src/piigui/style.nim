@@ -38,7 +38,7 @@ let clearColor* = sdl.Color((r:50'u8,g:50'u8,b:50'u8,a:0'u8))
 
 var fontTable* = newTable[string, ttf.FontPtr](8)
 
-var defaultSST* = newStyleSheetTbl()
+var defaultSST* = newStyleSheetRef_Tbl()
 
 defaultSST["rootStyle"] = StyleSheetRef(
   ## default style for every elem, see recalc
@@ -104,6 +104,13 @@ defaultSST["column"] = StyleSheetRef(
     ##    ##    ##       ##    ##       ##       ##    ## 
      ######     ##       ##    ######## ########  ######  
  ]#
+template init(theStyleSheetRef_Tbl: StyleSheetRef_Tbl)=
+  ## re/initialize stylesheet table with defaults
+  theStyleSheetRef_Tbl.clear()
+  theStyleSheetRef_Tbl["default"] = newStyleSheet() #! start
+  theStyleSheetRef_Tbl["default"] <- defaultSST["rootStyle"]
+
+#...................................
 
 
 proc addOrUpdate*(target: TableRef[string, StyleSheetRef],
@@ -114,8 +121,8 @@ proc addOrUpdate*(target: TableRef[string, StyleSheetRef],
   else:
     target[styleName] = style
 
-
 #...................................
+
 
 proc setBackGroundColor*(this:StyleSheetRef,
                           col:HexColor)=
@@ -161,7 +168,7 @@ proc recalcStyle*(this:DivRef, recursive:bool=false){.gcsafe.}=
   ## recalculate styleCache from:
   ## - default style
   ## - parent style
-  ## - lem styles
+  ## - elem styles
   ## 
   ## + pseudo styles if any
   {.gcsafe.}:
@@ -170,11 +177,11 @@ proc recalcStyle*(this:DivRef, recursive:bool=false){.gcsafe.}=
       return ]#
     var
       #pseudoStyles = newTable[string, StyleSheetRef](4)
-      pseudoStylesForAll = newStyleSheetTbl() #newTable[string, StyleSheetRef](4)
-      typePseudoStyles = newStyleSheetTbl()
-      groupPseudoStyles = newStyleSheetTbl()
-      namedPseudoStyles = newStyleSheetTbl()
-      #TODO inlinePseudoStyles = newStyleSheetTbl()
+      pseudoStylesForAll = newStyleSheetRef_Tbl() #newTable[string, StyleSheetRef](4)
+      typePseudoStyles = newStyleSheetRef_Tbl()
+      groupPseudoStyles = newStyleSheetRef_Tbl()
+      namedPseudoStyles = newStyleSheetRef_Tbl()
+      #TODO inlinePseudoStyles = newStyleSheetRef_Tbl()
 
     var
       styleForAll = newStyleSheet()
@@ -183,15 +190,15 @@ proc recalcStyle*(this:DivRef, recursive:bool=false){.gcsafe.}=
       nameStyle = newStyleSheet()
 
     
-    this.styleCache.clear()
+    #[ this.styleCache.clear()
     this.styleCache["default"] = newStyleSheet() #! start
-    this.styleCache["default"] <- defaultSST["rootStyle"]
+    this.styleCache["default"] <- defaultSST["rootStyle"] ]#
+    this.styleCache.init()
 
     #* type style ***********
     for key in defaultSST.keys():
 
       if key == "*":
-        #this.styles.add((name:key, style: defaultSST[key]))
         styleForAll <- defaultSST[key]
                 
         if defaultSST[key].pseudoStyles != nil:
@@ -202,11 +209,7 @@ proc recalcStyle*(this:DivRef, recursive:bool=false){.gcsafe.}=
                 this.styleCache[pkey] <- this.styleCache["default"]
                 this.styleCache[pkey] <- styleForAll
               this.styleCache[pkey] <- defaultSST[key].pseudoStyles[pkey]
-
-      #[ if key.len > 2:
-        if key[0..1] == "*:":
-          pseudoStylesForAll.addOrUpdate(key[2..key.high], defaultSST[key]) ]#
-      
+  
       #......................
 
       if key == this.typeName:
@@ -304,9 +307,8 @@ proc recalcStyle*(this:DivRef, recursive:bool=false){.gcsafe.}=
     # "classes"
     for style in this.styles:
       this.styleCache["default"] <- style.style
-      # todo style tree - pseudostyles:table[name, stylesheet]
 
-    # inline styling
+    #TODO: inline styling
     this.styleCache["default"] <- this.inlineStyle
 
 

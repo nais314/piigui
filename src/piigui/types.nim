@@ -93,8 +93,8 @@ type
 
     flexDirection*: FlexDirectionKind
     #flexWrap*: bool #! overflow?????
-    justifyContent*: FlexJustifyContentKind # horizontal
-    alignContent*: FlexAlignContentKind # vertical, lines
+    justifyContent*: FlexJustifyContentKind # horizontal distribute the lines
+    alignContent*: FlexAlignContentKind # vertical distribute the lines
     alignItems*: FlexAlignItemsKind # vertical, elems in line
 
     spacing*:int # elems margin
@@ -129,10 +129,10 @@ type
     pseudoStyles*: TableRef[string, StyleSheetRef]
 
   # "CSS" in table
-  StyleSheetTbl* = TableRef[string, StyleSheetRef]
+  StyleSheetRef_Tbl* = TableRef[string, StyleSheetRef]
 
   # used by Elements
-  StyleSheets* = seq[tuple[name:string, style:StyleSheetRef]]
+  StyleSheetSeq* = seq[tuple[name:string, style:StyleSheetRef]]
 
   #FontTable* = TableRef[string, ttf.FontPtr]
 
@@ -147,7 +147,7 @@ type
     window*: sdl.WindowPtr
     renderer*: sdl.RendererPtr
     rootElem*:DivRef
-    styleSheet*:StyleSheetTbl # newStyleSheetTbl*()
+    styleSheet*:StyleSheetRef_Tbl # newStyleSheetRef_Tbl*()
 
 
 
@@ -188,9 +188,8 @@ type
     redrawFlag*:int # changed? needs redraw? what to redraw?
     draw*:proc(this:DivRef)
 
-    styles*: StyleSheets # sequence of styles "cascading style sheet"
-    #pseudoStyles*: TableRef[string, StyleSheetRef] # x:hover,:even,:odd
-    styleCache*: TableRef[string, StyleSheetRef]
+    styles*: StyleSheetSeq # sequence of styles "cascading style sheet"
+    styleCache*: StyleSheetRef_Tbl #TableRef[string, StyleSheetRef]
     activeStyle*: string #StyleSheetRef # todo rethink if table needed or just default
     prevStyle*: string #StyleSheetRef
     inlineStyle*: StyleSheetRef # props changed on the fly
@@ -370,8 +369,8 @@ proc parseSizeStr*(sizeStr:string): tuple[unit:MeasurementUnit,value:int]=
  ]#
 
 
-proc newStyleSheetTbl*(): StyleSheetTbl =
-  ## init controlls stylesheets
+proc newStyleSheetRef_Tbl*(): StyleSheetRef_Tbl =
+  ## init controlls StyleSheetSeq
   newTable[string, StyleSheetRef](8)
 
 

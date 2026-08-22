@@ -1,0 +1,63 @@
+SST = ((Simple or SDL) Style Sheet)
+
+var defaultSST* = newStyleSheetRef_Tbl() # default created auto
+
+defaultSST["rootStyle"] = StyleSheetRef( # mother of all styles like rootObj
+
+defaultSST["row"]   #   flexDirection: fdRow,
+defaultSST["column"]  #  flexDirection: fdColumn,
+
+
+proc recalcStyle*(this:DivRef, recursive:bool=false){.gcsafe.}=
+  ## recalculate styleCache from:
+  ## - default style
+  ## - parent style
+  ## - elem styles
+  ## 
+  ## + pseudo styles if any
+
+  Cumulate styles into these styleSheets from defaultSST
+    var
+      #pseudoStyles = newTable[string, StyleSheetRef](4)
+      pseudoStylesForAll = newStyleSheetRef_Tbl() #newTable[string, StyleSheetRef](4)
+      typePseudoStyles = newStyleSheetRef_Tbl()
+      groupPseudoStyles = newStyleSheetRef_Tbl()
+      namedPseudoStyles = newStyleSheetRef_Tbl()
+      #TODO inlinePseudoStyles = newStyleSheetRef_Tbl()
+
+    var
+      styleForAll = newStyleSheet()
+      typeStyle = newStyleSheet()
+      groupStyle = newStyleSheet()
+      nameStyle = newStyleSheet()
+
+  this.styleCache.clear()
+  this.styleCache["default"] = newStyleSheet() #! start
+  this.styleCache["default"] <- defaultSST["rootStyle"]
+
+  for key in defaultSST.keys():
+    if key == "*":
+    if key == this.typeName:
+    if key == this.group:
+    if key == this.name:
+
+  if this.parent != nil:
+    # get styles from parent as base for styleCache
+    this.styleCache["default"] <- this.parent.styleCache["default"]
+    # apply cumulated styles
+    # same type
+    this.styleCache["default"] <- typeStyle
+
+    # logical group
+    this.styleCache["default"] <- groupStyle
+
+    # name == its own style
+    this.styleCache["default"] <- nameStyle
+
+    # "classes"
+    for style in this.styles:
+      this.styleCache["default"] <- style.style
+      # todo style tree - pseudostyles:table[name, stylesheet]
+
+    #TODO: inline styling
+    this.styleCache["default"] <- this.inlineStyle
