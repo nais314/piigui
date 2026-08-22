@@ -507,7 +507,7 @@ Yb      Yb   dP 88  .o Y8   8P 88YbdP88 88 Y88
             if line[i_elem].w < lineW:
               let delta = lineW - line[i_elem].w
               line[i_elem].x2 += delta
-              line[i_elem].h += delta
+              line[i_elem].w += delta
       
       # for correcting int division
       #   store the elementWithBiggestGrow
@@ -633,6 +633,7 @@ Yb      Yb   dP 88  .o Y8   8P 88YbdP88 88 Y88
             if line[i_elem].h < lineH:
               let delta = lineH - line[i_elem].h
               line[i_elem].y2 += delta
+              line[i_elem].h += delta
 
       # for correcting int division
       # store the elementWithBiggestGrow

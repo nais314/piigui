@@ -239,32 +239,33 @@ proc draw*(self:DivRef)=
         discard this.window.renderer.fillRect(addr(paintRect))
 
         # text::::::::::::::::::::::::::
-        var surface = this.pgui.fonts["default"].renderUtf8Shaded(
-                    this.text,
-                    this.styleCache[this.activeStyle].color,
-                    this.styleCache[this.activeStyle].backGroundColor)
+        if this.text.len > 0:
+          var surface = this.pgui.fonts["default"].renderUtf8Shaded(
+                      this.text,
+                      this.styleCache[this.activeStyle].color,
+                      this.styleCache[this.activeStyle].backGroundColor)
 
-        var texture = sdl.createTextureFromSurface(this.window.renderer, surface)
-
-
-        # get font heigth
-        var fh = this.pgui.fonts[
-                    this.styleCache[this.activeStyle].font
-                    ].fontHeight() + 2
-
-        if paintRect.h > fh:
-          paintRect.y = (paintRect.h - fh) div 2
-          paintRect.h = fh
-        if paintRect.w > surface.w:
-          paintRect.x = (paintRect.w - surface.w ) div 2
-          paintRect.w = surface.w
+          var texture = sdl.createTextureFromSurface(this.window.renderer, surface)
 
 
-        discard this.window.renderer.copy(texture,
-          nil, paintRect.addr)
+          # get font heigth
+          var fh = this.pgui.fonts[
+                      this.styleCache[this.activeStyle].font
+                      ].fontHeight() + 2
 
-        sdl.freeSurface(surface)
-        sdl.destroyTexture(texture)
+          if paintRect.h > fh:
+            paintRect.y = (paintRect.h - fh) div 2
+            paintRect.h = fh
+          if paintRect.w > surface.w:
+            paintRect.x = (paintRect.w - surface.w ) div 2
+            paintRect.w = surface.w
+
+
+          discard this.window.renderer.copy(texture,
+            nil, paintRect.addr)
+
+          sdl.freeSurface(surface)
+          sdl.destroyTexture(texture)
 
         # ::::::::::::::::::::::::::
 
@@ -282,32 +283,33 @@ proc draw*(self:DivRef)=
 
 
         # text::::::::::::::::::::::::::
-        var surface = this.pgui.fonts["default"].renderUtf8Shaded(
-                    this.text,
-                    this.styleCache[this.activeStyle].color,
-                    this.styleCache[this.activeStyle].backGroundColor)
+        if this.text.len > 0:
+          var surface = this.pgui.fonts["default"].renderUtf8Shaded(
+                      this.text,
+                      this.styleCache[this.activeStyle].color,
+                      this.styleCache[this.activeStyle].backGroundColor)
 
-        var texture = sdl.createTextureFromSurface(this.window.renderer, surface)
-        #texture.setAlphaMod(128'u8)
+          var texture = sdl.createTextureFromSurface(this.window.renderer, surface)
+          #texture.setAlphaMod(128'u8)
 
-        # get font heigth
-        var fh = this.pgui.fonts[
-                    this.styleCache[this.activeStyle].font
-                    ].fontHeight() + 2
+          # get font heigth
+          var fh = this.pgui.fonts[
+                      this.styleCache[this.activeStyle].font
+                      ].fontHeight() + 2
 
-        if paintRect.h > fh:
-          paintRect.y = ((paintRect.h - fh) div 2) + this.shadowSizePx
-          paintRect.h = fh
-        if paintRect.w > surface.w:
-          paintRect.x = ((paintRect.w - surface.w ) div 2) + this.shadowSizePx
-          paintRect.w = surface.w
+          if paintRect.h > fh:
+            paintRect.y = ((paintRect.h - fh) div 2) + this.shadowSizePx
+            paintRect.h = fh
+          if paintRect.w > surface.w:
+            paintRect.x = ((paintRect.w - surface.w ) div 2) + this.shadowSizePx
+            paintRect.w = surface.w
 
 
-        discard this.window.renderer.copy(texture,
-          nil, paintRect.addr)
+          discard this.window.renderer.copy(texture,
+            nil, paintRect.addr)
 
-        sdl.freeSurface(surface)
-        sdl.destroyTexture(texture)
+          sdl.freeSurface(surface)
+          sdl.destroyTexture(texture)
 
         # ::::::::::::::::::::::::::
 
