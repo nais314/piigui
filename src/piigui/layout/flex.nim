@@ -112,12 +112,10 @@ proc recalcFlex*(this: Divref, layer: Layer): tuple[w,h:int] =
   var  #* padding *#
     availW: int # form line from parent.w downto 0
     availH: int
-    thisY2: int
-    thisX2: int
-    #newY = this.y1
-    #newX = this.x1
-    nextY = this.y1 + this.style.padding # used at line calculation #padding#
+    thisX2: int # thisX2 = this.x2 - this.style.padding
+    thisY2: int # thisY2 = this.y2 - this.style.padding
     nextX = this.x1 + this.style.padding
+    nextY = this.y1 + this.style.padding # used at line calculation #padding#
 
     line: seq[DivRef] # the current line
     lineH: int
@@ -203,10 +201,10 @@ proc recalcFlex*(this: Divref, layer: Layer): tuple[w,h:int] =
         Yb      Yb   dP 88 Y88   88   88""   88 Y88   88   
         YboodP  YbodP  88  Y8   88   888888 88  Y8   88   
       ]#
-      case this.style.alignContent:
+      case this.style.alignContent: #* ALIGN ROWS VERTICALLY IN PARENT
         of facUndefined, facStart: discard
 
-        of facEnd:
+        of facEnd: #TODO: scroll ?!
           nY = thisY2#this.y2
           for i_line in countdown(article.lines.high,0):
             nY -= (article.lineDims[i_line].h - 1)
@@ -226,48 +224,35 @@ proc recalcFlex*(this: Divref, layer: Layer): tuple[w,h:int] =
                 elem.y1 += delta
                 elem.y2 += delta
 
-        of facStretch: #TODO ERROR
-          #[ if article.lines.len == 0: return
+        of facStretch: #TODO TEST
+          # [..]DS
+          # get how much each line of elems heigth needs 2 grow
           delta = (origiH - totalH) div article.lines.len
-          remainder = origiH - (delta * article.lines.len)
+          remainder = origiH - (delta * article.lines.len) # rounding patch
 
+          var offset = 0 #*--offset
           for i_line in 0..article.lines.high:
-            article.lineDims[i_line].h += delta
-            if remainder > 0: article.lineDims[i_line].h += 1
-            for i_elem in article.lines[i_line]:
-              i_elem.y1 += i_line * delta
-              i_elem.y2 += i_line * delta + delta
-              i_elem.w += delta
-              if remainder > 0:
-                i_elem.x2 += 1
-                i_elem.w += 1
-            remainder -= 1 ]#
-
-          delta = (origiH - totalH) div article.lines.len
-          remainder = origiH - (delta * article.lines.len)
-
-          var offset = 0
-          for i_line in 0..article.lines.high:
+            # rounding patch
             let grow = delta + (if remainder > 0: 1 else: 0)
             if remainder > 0: remainder -= 1
 
             article.lineDims[i_line].h += grow
-            article.lineDims[i_line].y += offset
+            article.lineDims[i_line].y += offset #*--offset
 
             for i_elem in article.lines[i_line]:
               i_elem.y1 += offset        # shift down by previous lines' growth
               i_elem.h  += grow          # stretch to new line height
               i_elem.y2 += offset + grow # both shift and stretch
 
-            offset += grow
+            offset += grow #*--offset
 
 
         of facSpaceBetween:
           if article.lines.len > 1:
-            delta = (origiH - totalH) div (article.lines.len - 1)
+            delta = (origiH - totalH) div (article.lines.len - 1) #! -1 (4 rows having 3 spaces between)
             remainder = origiH - (delta * (article.lines.len - 1))
 
-            for i_line in 1..article.lines.high:
+            for i_line in 1..article.lines.high: #! starts from 1, no space above
               for i_elem in 0..article.lines[i_line].high:
                 article.lines[i_line][i_elem].y1 += delta * i_line
                 article.lines[i_line][i_elem].y2 += delta * i_line
@@ -289,7 +274,7 @@ proc recalcFlex*(this: Divref, layer: Layer): tuple[w,h:int] =
                 if remainder > 0:
                   article.lines[i_line][i_elem].y1 += 1 * (i_line + 1)
                   article.lines[i_line][i_elem].y2 += 1 * (i_line + 1)
-                  remainder -= 1
+              remainder -= 1
 
       #[ 
 
@@ -304,28 +289,18 @@ proc recalcFlex*(this: Divref, layer: Layer): tuple[w,h:int] =
       88  Yb  YbodP     YP  YP                      
                                                             
       ]#
-      case this.style.justifyContent:
+      case this.style.justifyContent: #* ALIGN ROWS HORIZONTALLY IN PARENT
         of fjcUndefined, fjcStart: discard
+
         of fjcEnd:
-          
           for i_line in 0..article.lines.high:
             delta = origiW - article.lineDims[i_line].w
-            #delta = 0
-            when debug > 1:
-              echo delta, "  distributeContent: fjcEnd  origiW ", origiW,"-", article.lineDims[i_line].w,": ",
-                origiW - article.lineDims[i_line].w - this.style.padding
             for i_elem in article.lines[i_line]:
               i_elem.x1 += delta
               i_elem.x2 += delta
 
         of fjcCenter:
           for i_line in 0..article.lines.high:
-
-            when debug > 1:
-              echo "distributeContent: row just center: ",origiW," - ", 
-                article.lineDims[i_line].w, " = ",
-                (origiW - article.lineDims[i_line].w) div 2
-
             delta = (origiW - article.lineDims[i_line].w) div 2
             if delta > 1:
               for i_elem in article.lines[i_line]:
@@ -357,65 +332,65 @@ proc recalcFlex*(this: Divref, layer: Layer): tuple[w,h:int] =
  ]#
     #!............flexDirection == fdColumn:................
     #! ROTATE YOUR VIEW 90 degrees
-    when debug > 1: echo "distribute fdcolumn ????????"
     if this.style.flexDirection == fdColumn:#!............
       when debug > 0: echo "distribute fdcolumn"
+
       if totalW < origiW: # else scroll :)
 
         # TODO CONTINUE
-        case this.style.alignContent:
+        case this.style.alignContent: #* ALIGN COLUMNS HORIZONTALLY IN PARENT
           of facUndefined: discard
           of facStart: discard
           of facCenter:
               when debug > 1: echo ">>> distribute fdcolumn  facCenter <<<"
-              delta = (availW - totalW) div 2
-              remainder = availW - (delta * 2)
+              delta = (origiW - totalW) div 2
+              remainder = (origiW - totalW) - (delta * 2)
               for i_line in 0..article.lines.high:
                 for i_elem in article.lines[i_line]:
                   i_elem.x1 += delta
                   i_elem.x2 += delta
+                  if remainder > 0:
+                    i_elem.x1 += 1
+                    i_elem.x2 += 1
+                remainder -= 1
+
+          of facSpaceBetween:
+            if article.lines.len > 1:
+              delta = (origiW - totalW) div (article.lines.len - 1)
+              remainder = (origiW - totalW) - (delta * (article.lines.len - 1))
+            elif article.lines.len == 1: # one line, facCenter:
+              delta = (origiW - totalW) div 2
+              remainder = (origiW - totalW) - (delta * 2)
+            for i_line in 1..article.lines.high:
+              for i_elem in article.lines[i_line]:
+                i_elem.x1 += delta * i_line
+                i_elem.x2 += delta * i_line
+                if remainder > 0:
+                  i_elem.x1 += 1
+                  i_elem.x2 += 1
+              remainder -= 1
 
           of facSpaceAround:
             if article.lines.len > 1:
-              delta = (availW - totalW) div (article.lines.len + 1)
-              remainder = availW - (delta * (article.lines.len + 1))
-              var i = 0
-              for i_line in 0..article.lines.high:
-                i += 1
-                for i_elem in article.lines[i_line]:
-                  i_elem.x1 += delta * i
-                  i_elem.x2 += delta * i
-                  if remainder > 0:
-                    i_elem.x1 += 1
-                    i_elem.x2 += 1
-                remainder -= 1
-          
-          of facSpaceBetween:
-            if article.lines.len > 1:
-              delta = (availW - totalW) div (article.lines.len - 1)
-              remainder = origiW - (delta * (article.lines.len - 1))
-              for i_line in 0..article.lines.high:
-                if i_line == 0: continue
-                if i_line == article.lines.high:
-                  delta = thisY2 - 
-                          this.style.padding -
-                          article.lineDims[i_line].w
-                  for i_elem in article.lines[i_line]:                          
-                    i_elem.x1 += delta
-                    i_elem.x2 += delta
-                  break
-
-                for i_elem in article.lines[i_line]:
-                  i_elem.x1 += delta * i_line
-                  i_elem.x2 += delta * i_line
-                  if remainder > 0:
-                    i_elem.x1 += 1
-                    i_elem.x2 += 1
-                remainder -= 1
+              delta = (origiW - totalW) div (article.lines.len + 1)
+              remainder = (origiW - totalW) - (delta * (article.lines.len + 1))
+            elif article.lines.len == 1: # one line, facCenter:
+              delta = (origiW - totalW) div 2
+              remainder = (origiW - totalW) - (delta * 2)
+            var i = 0
+            for i_line in 0..article.lines.high:
+              i += 1
+              for i_elem in article.lines[i_line]:
+                i_elem.x1 += delta * i
+                i_elem.x2 += delta * i
+                if remainder > 0:
+                  i_elem.x1 += 1
+                  i_elem.x2 += 1
+              remainder -= 1
 
           of facStretch:
-              delta = (availW - totalW) div article.lines.len
-              remainder = origiW - (delta * article.lines.len)
+              delta = (origiW - totalW) div article.lines.len
+              remainder = (origiW - totalW) - (delta * article.lines.len)
               for i_line in 0..article.lines.high:
                 article.lineDims[i_line].w += delta
                 if remainder > 0: article.lineDims[i_line].w += 1
@@ -429,7 +404,7 @@ proc recalcFlex*(this: Divref, layer: Layer): tuple[w,h:int] =
                 remainder -= 1
 
           of facEnd:
-            delta = (availW - totalW)
+            delta = (origiW - totalW)
             for i_line in 0..article.lines.high:
               for i_elem in article.lines[i_line]:
                   i_elem.x1 += delta
@@ -878,7 +853,7 @@ Yb      Yb   dP 88  .o Y8   8P 88YbdP88 88 Y88
 
     if line.len > 0: postProcessRow() # post process last row
     
-    distributeContent()
+    if totalH < origiH: distributeContent() # TODO: scroll
     
     #TODO SCROLL
 
@@ -1002,7 +977,7 @@ Yb      Yb   dP 88  .o Y8   8P 88YbdP88 88 Y88
     when debug > 1: echo "   Column line.len = ", line.len
     if line.len > 0: postProcessColumn() # post process last row
 
-    distributeContent()
+    if totalW < origiW: distributeContent() #TODO: scroll
     #TODO SCROLL
 
 

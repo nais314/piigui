@@ -1,0 +1,27 @@
+distributeContent
+    if this.style.flexDirection == fdRow:
+    # ALIGN ROWS VERTICALLY IN PARENT
+      case this.style.alignContent:
+        of facUndefined, facStart: discard
+        of facEnd: move lines to bottom
+        of facCenter: 
+        of facStretch: fill parent
+        of facSpaceBetween: even space between rows
+        of facSpaceAround:
+
+      case this.style.justifyContent: 
+      # ALIGN ROWS HORIZONTALLY IN PARENT
+        of fjcUndefined, fjcStart: discard
+        of fjcEnd: align rows to the right
+        of fjcCenter:
+
+
+
+    if this.style.flexDirection == fdColumn:#!............
+        case this.style.alignContent:
+        # ALIGN COLUMNS HORIZONTALLY IN PARENT
+          of facUndefined: discard
+          of facStart: discard
+          of facCenter: center columns horizontally
+          of facSpaceBetween: fill parent w columns, even spc between
+          of facSpaceAround: fill parent w columns, even spc around
