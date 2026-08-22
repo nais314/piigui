@@ -25,3 +25,10 @@ distributeContent
           of facCenter: center columns horizontally
           of facSpaceBetween: fill parent w columns, even spc between
           of facSpaceAround: fill parent w columns, even spc around
+          of facStretch: fill parent, grow columns
+          of facEnd:
+
+        case this.style.justifyContent:
+        # ALIGN COLUMNS VERTICALLY IN PARENT
+          of fjcUndefined,fjcStart: discard
+          of fjcEnd:

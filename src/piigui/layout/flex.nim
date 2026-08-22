@@ -112,7 +112,7 @@ proc recalcFlex*(this: Divref, layer: Layer): tuple[w,h:int] =
   var  #* padding *#
     availW: int # form line from parent.w downto 0
     availH: int
-    thisX2: int # thisX2 = this.x2 - this.style.padding
+    #thisX2: int # thisX2 = this.x2 - this.style.padding #TODO DELETE
     thisY2: int # thisY2 = this.y2 - this.style.padding
     nextX = this.x1 + this.style.padding
     nextY = this.y1 + this.style.padding # used at line calculation #padding#
@@ -129,10 +129,10 @@ proc recalcFlex*(this: Divref, layer: Layer): tuple[w,h:int] =
   if this.style.padding > -1:
     availW = this.w - (this.style.padding * 2) # used at line calculation
     availH = this.h - (this.style.padding * 2)
-    thisX2 = this.x2 - this.style.padding
+    #thisX2 = this.x2 - this.style.padding #TODO DELETE
     thisY2 = this.y2 - this.style.padding
 
-    if this.x1 > thisX2: thisX2 = this.x1 #boundaries check
+    #if this.x1 > thisX2: thisX2 = this.x1 #boundaries check #TODO DELETE
     if this.y1 > thisY2: thisY2 = this.y1 #boundaries check
 
     if availW < 0: availW = 0 #boundaries check
@@ -141,7 +141,7 @@ proc recalcFlex*(this: Divref, layer: Layer): tuple[w,h:int] =
   else:
     availW = this.w # used at line calculation
     availH = this.h
-    thisX2 = this.x2
+    #thisX2 = this.x2 #TODO DELETE
     thisY2 = this.y2
 
   #* padding calculated *#
@@ -250,7 +250,7 @@ proc recalcFlex*(this: Divref, layer: Layer): tuple[w,h:int] =
         of facSpaceBetween:
           if article.lines.len > 1:
             delta = (origiH - totalH) div (article.lines.len - 1) #! -1 (4 rows having 3 spaces between)
-            remainder = origiH - (delta * (article.lines.len - 1))
+            remainder = (origiH - totalH) - (delta * (article.lines.len - 1))
 
             for i_line in 1..article.lines.high: #! starts from 1, no space above
               for i_elem in 0..article.lines[i_line].high:
@@ -358,17 +358,25 @@ proc recalcFlex*(this: Divref, layer: Layer): tuple[w,h:int] =
             if article.lines.len > 1:
               delta = (origiW - totalW) div (article.lines.len - 1)
               remainder = (origiW - totalW) - (delta * (article.lines.len - 1))
-            elif article.lines.len == 1: # one line, facCenter:
+              var offset = 0
+              for i_line in 0..article.lines.high:
+                if i_line > 0:
+                  offset += delta
+                  if remainder > 0:
+                    offset += 1
+                    remainder -= 1
+                for i_elem in article.lines[i_line]:
+                  i_elem.x1 += offset
+                  i_elem.x2 += offset
+            else: # one column: center it (same as facCenter)
               delta = (origiW - totalW) div 2
               remainder = (origiW - totalW) - (delta * 2)
-            for i_line in 1..article.lines.high:
-              for i_elem in article.lines[i_line]:
-                i_elem.x1 += delta * i_line
-                i_elem.x2 += delta * i_line
+              for i_elem in article.lines[0]:
+                i_elem.x1 += delta
+                i_elem.x2 += delta
                 if remainder > 0:
                   i_elem.x1 += 1
                   i_elem.x2 += 1
-              remainder -= 1
 
           of facSpaceAround:
             if article.lines.len > 1:
@@ -422,7 +430,7 @@ dP   `" dP   Yb 88     88   88 88b  d88 88Yb88
 Yb      Yb   dP 88  .o Y8   8P 88YbdP88 88 Y88 
  YboodP  YbodP  88ood8 `YbodP' 88 YY 88 88  Y8 
  ]#
-        case this.style.justifyContent:
+        case this.style.justifyContent: #* ALIGN COLUMNS VERTICALLY IN PARENT
           of fjcUndefined,fjcStart: discard
           of fjcEnd:
             for i_line in 0..article.lines.high:
