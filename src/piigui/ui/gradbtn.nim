@@ -63,6 +63,7 @@ proc newGradBtn*(parent: DivRef,
   result = new GradBtn
   initLock(result.lock)
   result.typeName = "GradBtn"
+  result.iD = piigui.getNextGlobalID()
   result.parent = parent
   if parent != nil:
     result.pgui = parent.pgui

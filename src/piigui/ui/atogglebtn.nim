@@ -61,6 +61,7 @@ proc newAToggleBtn*(
   result = new AToggleBtn
   initLock(result.lock)
   result.typeName = "AToggleBtn"
+  result.iD = piigui.getNextGlobalID()
   result.parent = parent
   if parent != nil:
     result.pgui = parent.pgui

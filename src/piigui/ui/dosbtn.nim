@@ -68,6 +68,7 @@ proc newDosBtn*(parent: DivRef,
   result = new DosBtn
   initLock(result.lock)
   result.typeName = "DosBtn"
+  result.iD = piigui.getNextGlobalID()
   result.parent = parent
   if parent != nil:
     result.pgui = parent.pgui

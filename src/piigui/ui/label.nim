@@ -32,6 +32,7 @@ proc newLabel*(parent: DivRef,
   initLock(result.lock)
 
   result.typeName = "Label"
+  result.iD = piigui.getNextGlobalID()
 
   result.parent = parent
   if parent != nil:

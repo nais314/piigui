@@ -139,8 +139,6 @@ type
 
   #------------------------------------------------------
 
-
-
   SdlWindowID* = uint32
   PgWindow* = ref object of RootObj
     pgui*:Pgui
@@ -149,17 +147,14 @@ type
     rootElem*:DivRef
     styleSheet*:StyleSheetRef_Tbl # newStyleSheetRef_Tbl*()
 
-
-
-
   #------------------------------------------------------
-
   Layer* = ref object of RootObj
     recalc*: proc(this:DivRef, layer:Layer):tuple[w,h:int] # flex, absolute, free, fixed
     elems*: seq[DivRef]
     w*,h*:int
-
+  #------------------------------------------------------
   RootElementObj* = object of RootObj # extra root :-?
+  #------------------------------------------------------
 
   #! REMEMBER TO MODIFY proc `=destroy`(this: var DivObj)
   DivRef* = ref DivObj
@@ -175,6 +170,7 @@ type
     
     name*: string # id - html id
     group*:string # group id - html name
+    iD*: uint # uniq ID for AI and such... result.iD = piigui.getNextGlobalID()
 
     parent*: DivRef
     nthChild*:int
@@ -218,6 +214,7 @@ type
     listeners*: ListenerList
 
     lock*:Lock
+
 
 
 
@@ -303,10 +300,19 @@ proc `=destroy`(this: var DivObj) =
   `=destroy`(this.onDrop)
   `=destroy`(this.onClick)
   `=destroy`(this.onTextInput)
+  `=destroy`(this.iD)
   deinitLock(this.lock)
 
 template style*(this:DivRef):StyleSheetRef=
   this.styleCache[this.activeStyle]
+
+proc getID*(this: DivRef): string =
+  if this.name == "":
+    result = this.typeName & $this.iD
+  else:
+    result = this.name & $this.iD
+
+
 
 #[ 
 ########     ###    ########   ######  ######## 

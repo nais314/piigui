@@ -69,6 +69,7 @@ proc newTextBox*(parent: DivRef,
   result = new TextBox
   initLock(result.lock)
   result.typeName = "TextBox"
+  result.iD = piigui.getNextGlobalID()
 
   result.val = "" #TODO
 

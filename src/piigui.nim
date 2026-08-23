@@ -46,7 +46,19 @@ converter BoolToSDL_Return*(x: bool): SDL_Return =
 ###########################################
 
 
+var GlobalIDCounter: uint = 0
+type IDCounterOverflowError* = object of ValueError
+proc getNextGlobalID*(): uint =
+  ## Safely increments the counter by 1 and returns the new value.  if GlobalIDCounter == uint.high:
+  if GlobalIDCounter == uint.high:
+    # Strategy 1: Exception, when the counter is full
+    raise newException(IDCounterOverflowError, "A globalIDCounter túlcsordult (uint.high)!")
+      
+    # Strategy 2 (Alternative): Reset to 1,
+    #GlobalIDCounter = 1
 
+  inc GlobalIDCounter
+  return GlobalIDCounter
 
 
 ###########################################
@@ -382,6 +394,7 @@ proc newDiv*(parent: DivRef,
   initLock(result.lock)
 
   result.typeName = "Div"
+  result.iD = getNextGlobalID()
 
   result.draw = drawDivRef
 
@@ -578,6 +591,7 @@ proc newRoot*(
   result.layers = @[]
   discard result.newLayer(recalcFun)
   result.name = "root"
+  result.iD = getNextGlobalID()
 
   result.w_unit = muPx
   result.h_unit = muPx
@@ -733,7 +747,7 @@ template recalcDOM*(win:PgWindow)=
 proc getElementAtCoord*(root: DivRef, x,y:int): DivRef =
   ## gets element clicked on
   ## search from top to bottom
-  const debug = 1
+  const debug = 0
   
   result = nil
   #echo "getElementAtCoord_______________"
