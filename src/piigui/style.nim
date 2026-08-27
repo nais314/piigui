@@ -164,6 +164,8 @@ dP       `88888P' `88888P' `88888P8 dP `88888P'
 ##    ##  ##       ##    ## ##     ## ##       ##    ## 
 ##     ## ########  ######  ##     ## ########  ######  
  ]#
+proc renumberNthChild*(layer: Layer) #!FWD
+
 proc recalcStyle*(this:DivRef, recursive:bool=false){.gcsafe.}=
   ## recalculate styleCache from:
   ## - default style
@@ -371,14 +373,18 @@ proc recalcStyle*(this:DivRef, recursive:bool=false){.gcsafe.}=
 
     
     for layer in this.layers:
+      layer.renumberNthChild()
       for i_elem in 0..layer.elems.high:
-        #echo this.name, " >>>>>> ", i_elem, " = ", layer[i_elem].name
-        if not (layer.elems[i_elem] of BRElem):
-          layer.elems[i_elem].nthChild = i_elem + 1 # +1 for mod 2 - even/odd
-          if recursive:
-            layer.elems[i_elem].recalcStyle(recursive=true)
-          else:
-            layer.elems[i_elem].redrawFlag = 1
+        if recursive:
+          layer.elems[i_elem].recalcStyle(recursive=true)
+        else:
+          layer.elems[i_elem].redrawFlag = 1
+
+proc renumberNthChild*(layer: Layer) =
+  ## recompute nthChild for a layer's elems after structural changes
+  for i_elem in 0..layer.elems.high:
+    if not (layer.elems[i_elem] of BRElem):
+      layer.elems[i_elem].nthChild = i_elem + 1
 
 #[ 
    ###    ########  ########                              
@@ -387,17 +393,18 @@ proc recalcStyle*(this:DivRef, recursive:bool=false){.gcsafe.}=
 ##     ## ##     ## ##     ##                             
 ######### ##     ## ##     ##                             
 ##     ## ##     ## ##     ##                             
-##     ## ########  ########                              
+##     ## ######## ##     ##                              
  
 
-########  ######## ##     ##  #######  ##     ## ######## 
+ ########  ######## ##     ##  #######  ##     ## ######## 
 ##     ## ##       ###   ### ##     ## ##     ## ##       
 ##     ## ##       #### #### ##     ## ##     ## ##       
 ########  ######   ## ### ## ##     ## ##     ## ######   
 ##   ##   ##       ##     ## ##     ##  ##   ##  ##       
 ##    ##  ##       ##     ## ##     ##   ## ##   ##       
 ##     ## ######## ##     ##  #######     ###    ######## 
- ]#
+
+  ]#
 
 proc addStyle*(this:DivRef,
                style:tuple[name:string,

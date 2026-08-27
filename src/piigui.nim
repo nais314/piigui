@@ -406,6 +406,7 @@ proc newDiv*(parent: DivRef,
 
 
   result.layers = @[]
+  result.layer = layer
   discard result.newLayer(recalcFun)
 
   result.name = name
@@ -515,6 +516,12 @@ proc flex*(parent: DivRef,
           recalcFun = recalcFlex,
           styles
         )
+# Alias forwarding template
+template flexBox*(args: varargs[untyped]): untyped =
+  flex(args)
+template panel*(args: varargs[untyped]): untyped =
+  flex(args)
+
 
 proc flexColumn*(parent: DivRef,
              layer:int = 0,
@@ -524,8 +531,7 @@ proc flexColumn*(parent: DivRef,
              height:string="auto",
              styles:openArray[string] = []
              ):DivRef=
-    var stylesr = @["column"]
-    for s in styles: stylesr.add(s)
+    var stylesResult = @["column"] & @styles
     result = newDiv(parent,
           layer,
           name,
@@ -533,29 +539,34 @@ proc flexColumn*(parent: DivRef,
           width,
           height,
           recalcFun = recalcFlex,
-          stylesr
+          stylesResult
         )
+# Alias forwarding template
+template vBox*(args: varargs[untyped]): untyped =
+  flexColumn(args)
+
 
 proc flexRow*(parent: DivRef,
-             layer:int = 0,
+             layer: int = 0,
              name: string = "",
              group: string = "",
-             width:string="auto",
-             height:string="auto",
-             styles:openArray[string] = []
-             ):DivRef=
-    var stylesr = @["row"]
-    for s in styles: stylesr.add(s)
-    newDiv(parent,
-          layer,
-          name,
-          group,
-          width,
-          height,
-          recalcFun = recalcFlex,
-          stylesr
-        )
-
+             width: string = "auto",
+             height: string = "auto",
+             styles: openArray[string] = []
+             ): DivRef =
+  var stylesResult = @["row"] & @styles
+  newDiv(parent,
+        layer,
+        name,
+        group,
+        width,
+        height,
+        recalcFun = recalcFlex,
+        stylesResult
+  )
+# Alias forwarding template
+template hBox*(args: varargs[untyped]): untyped =
+  flexRow(args)
 #--------------------------------------------
 
 
@@ -589,6 +600,7 @@ proc newRoot*(
   result.window = win
 
   result.layers = @[]
+  result.layer = -1 # -1 marks the root: it has no parent
   discard result.newLayer(recalcFun)
   result.name = "root"
   result.iD = getNextGlobalID()
@@ -849,19 +861,31 @@ proc changeWindowRecursive(this:DivRef, win:PgWindow)=
       changeWindowRecursive(elem, win)
 
 proc copyElem*(this:DivRef, dest:DivRef, layerNum: int = 0)=
-  ## move the elem from parent to an other parent & layer
+  ## copy the elem into dest's layer (elem keeps its old parent)
+  if layerNum < 0 or layerNum > dest.layers.high: return
   dest.layers[layerNum].elems.add(this)
+  this.layer = layerNum
   this.parent = dest
   this.window = dest.window
   changeWindowRecursive(this, dest.window)
+  dest.layers[layerNum].renumberNthChild()
   recalcStyle(dest,true)
   recalcDOM(dest)
 
-proc removeElem*(layer:Layer, elem:DivRef)=
+proc removeElem*(layer: Layer, elem: DivRef)=
   if layer.elems.len > 0:
     for i in 0.. layer.elems.high:
       if layer.elems[i] == elem:
         layer.elems.delete(i)
+        break
+  layer.renumberNthChild()
+
+proc removeElem*(elem: DivRef)=
+  ## removes elem from its parent's layer using the stored layer index
+  if elem.parent == nil: return
+  let l = elem.layer
+  if l < 0 or l > elem.parent.layers.high: return
+  removeElem(elem.parent.layers[l], elem)
 #..............
 
 proc setPosition*(this:DivRef, x,y:int)=

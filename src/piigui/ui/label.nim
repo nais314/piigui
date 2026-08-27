@@ -41,6 +41,7 @@ proc newLabel*(parent: DivRef,
     result.nthChild = parent.layers[layer].elems.len
 
   result.layers = @[]
+  result.layer = layer
   discard result.newLayer(recalcFun)
   result.name = name
   result.group = group

@@ -177,6 +177,7 @@ type
 
     #layers*: seq[seq[DivRef]] # childs on layers
     layers*: seq[Layer]
+    layer*: int
 
     #recalc*: proc(this:DivRef):tuple[w,h:int] # flex, absolute, free, fixed
     x1*,x2*,y1*,y2*: int
@@ -300,7 +301,6 @@ proc `=destroy`(this: var DivObj) =
   `=destroy`(this.onDrop)
   `=destroy`(this.onClick)
   `=destroy`(this.onTextInput)
-  `=destroy`(this.iD)
   deinitLock(this.lock)
 
 template style*(this:DivRef):StyleSheetRef=

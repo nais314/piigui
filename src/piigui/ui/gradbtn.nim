@@ -71,6 +71,7 @@ proc newGradBtn*(parent: DivRef,
     result.nthChild = parent.layers[layer].elems.len
 
   result.layers = @[]
+  result.layer = layer
   discard result.newLayer(recalcFun)
   result.name = name
   result.group = group
@@ -152,17 +153,17 @@ proc draw*(self:DivRef)=
     # after
     # sdl.setRenderTarget(this.window.renderer, this.textureCache) 
     var canvasRect: sdl.Rect
-    canvasRect.x = 0
-    canvasRect.y = 0
+    canvasRect.x = 0 #!
+    canvasRect.y = 0 #!
     canvasRect.w = this.w
     canvasRect.h = this.h
 
     # .............................
 
-    # the area to paint to on the renderer
+    # the area to paint to on the screen (renderer)
     var thisRect: sdl.Rect
-    thisRect.x = this.x1
-    thisRect.y = this.y1
+    thisRect.x = this.x1 #!
+    thisRect.y = this.y1 #!
     thisRect.w = this.w
     thisRect.h = this.h
 
@@ -227,10 +228,10 @@ proc draw*(self:DivRef)=
         discard this.window.renderer.fillRect(addr(canvasRect))
   ]#
         # btn face:::::
-        paintRect.x = canvasRect.x
-        paintRect.y = canvasRect.y
-        paintRect.w = canvasRect.w
-        paintRect.h = canvasRect.h
+        paintRect.x = canvasRect.x # 0
+        paintRect.y = canvasRect.y # 0
+        paintRect.w = canvasRect.w # w
+        paintRect.h = canvasRect.h # h
 
         ## https://stackoverflow.com/questions/20348616/how-to-create-a-color-gradientTexture-in-sdl
         discard sdl.setHint(sdl.HINT_RENDER_SCALE_QUALITY,"1")
@@ -312,7 +313,7 @@ proc draw*(self:DivRef)=
         # ...............................
 
 
-      elif this.state == 1: # pressed, toggled state
+      elif this.state == 1: #! pressed, toggled state -------
         paintRect.x = canvasRect.x
         paintRect.y = canvasRect.y
         paintRect.w = canvasRect.w
