@@ -38,7 +38,7 @@ proc default_onFocus*(this:DivRef){.nosinks.}=
 proc default_onBlur*(this:DivRef){.nosinks.}=
   GradBtn(this).state = 0
 
-proc draw*(self:DivRef) #!FWD
+proc draw*(self:DivRef, scrollX, scrollY:int) #!FWD
 proc gradbtn_onFocus*(this:DivRef){.nosinks.} #!FWD
 proc gradbtn_onClick*(this:DivRef, e:sdl.Event){.nosinks.} #!FWD
 proc gradbtn_onDragEnd*(this:DivRef){.nosinks.} #!FWD
@@ -123,7 +123,7 @@ proc newGradBtn*(parent: DivRef,
  ]#
 
 
-proc draw*(self:DivRef)=
+proc draw*(self:DivRef, scrollX, scrollY:int)=
   # calculate inner x,y,w,h,etc
   # if update only
   # if visible
@@ -141,8 +141,13 @@ proc draw*(self:DivRef)=
       clipRect.w = this.w
       clipRect.h = this.h
     else:
-      clipRect.x = this.parent.x1
-      clipRect.y = this.parent.y1
+      var pAccX = scrollX
+      var pAccY = scrollY
+      if this.parent.scrollable:
+        pAccX -= this.parent.scrollX
+        pAccY -= this.parent.scrollY
+      clipRect.x = this.parent.x1 - pAccX
+      clipRect.y = this.parent.y1 - pAccY
       clipRect.w = this.parent.w #(this.x2 - this.x1 + 1)
       clipRect.h = this.parent.h #(this.y2 - this.y1 + 1)
     
@@ -162,8 +167,8 @@ proc draw*(self:DivRef)=
 
     # the area to paint to on the screen (renderer)
     var thisRect: sdl.Rect
-    thisRect.x = this.x1 #!
-    thisRect.y = this.y1 #!
+    thisRect.x = this.x1 - scrollX #!
+    thisRect.y = this.y1 - scrollY #!
     thisRect.w = this.w
     thisRect.h = this.h
 

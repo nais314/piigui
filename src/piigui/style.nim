@@ -173,6 +173,7 @@ proc recalcStyle*(this:DivRef, recursive:bool=false){.gcsafe.}=
   ## - elem styles
   ## 
   ## + pseudo styles if any
+  if this.styleCache == nil: return # e.g. bare BRElem line-break markers
   {.gcsafe.}:
     #[ if this.pseudoStyles == nil:
       echo "*** NO PSEUDOSTYLES **** ", this.name

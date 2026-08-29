@@ -12,12 +12,21 @@ import parseUtils
 
 
 const
+  BaselineDPI: cfloat = 96.0  #TODO the "1.0 scale" reference point (same convention as CSS)
+
   DefaultWindowW* = 640 # Window width
   DefaultWindowH* = 480 # Window height
   DefaultWindowFlags*: cuint = sdl.SDL_WINDOW_SHOWN
   DefaultRendererFlags*: cint = sdl.Renderer_Accelerated or sdl.Renderer_PresentVsync or sdl.Renderer_TargetTexture
 
   EmptyColor* : sdl.Color = (r:0'u8,g:0'u8,b:0'u8,a:0'u8)
+
+  # scrollbar geometry
+  ScrollBarSize* = 12 # track/arrow thickness in px
+  ScrollBarArrowSize* = 12
+  ScrollBarMinSlider* = 16
+  ScrollBarWheelStep* = 40
+  ScrollBarArrowStep* = 16
 
 #-------------------------------------------------------
 type
@@ -37,11 +46,10 @@ type
     bgrRepeatY
 
   OverFlowKind* = enum
-    ofScroll,
-    ofHidden,
-    #ofVisible, #notimplemented
-    ofX,
-    ofY
+    ofScroll, # default: scroll x and y when content overflows
+    ofHidden  # scrollbar disabled, clip away extra parts
+    #ofX #notimplemented
+    #ofY #notimplemented
 
   FlexDirectionKind* = enum
     fdUndefined,
@@ -118,7 +126,7 @@ type
 
     font*:string # fontTable[string, sdl.font] #TODO
 
-    #overFlow*: OverFlowKind
+    overFlow*: OverFlowKind
 
     #opacity*: int #TODO how to add opacity? 0 - 1.0 * alpha?
 
@@ -163,7 +171,10 @@ type
     w*,h*:int
     w_value*, h_value*:int # original user numeric value
     w_unit*, h_unit*: MeasurementUnit # PiXel, PerCent
-    #innerW*, innerH*:int #* for scrollables - recalc sets it for parent
+    innerW*, innerH*:int #* content size for scrollables - set by recalc
+    scrollable*: bool #* if true, content may overflow and scroll
+    scrollX*, scrollY*: int #* current scroll offsets
+    scrollbar*: ScrollBar #* standalone overlay object, NOT in layers
 
     window*: PgWindow
     pgui*:Pgui
@@ -183,7 +194,7 @@ type
     x1*,x2*,y1*,y2*: int
 
     redrawFlag*:int # changed? needs redraw? what to redraw?
-    draw*:proc(this:DivRef)
+    draw*:proc(this:DivRef, scrollX, scrollY:int)
 
     styles*: StyleSheetSeq # sequence of styles "cascading style sheet"
     styleCache*: StyleSheetRef_Tbl #TableRef[string, StyleSheetRef]
@@ -203,7 +214,12 @@ type
     onDragStart*: proc(this:DivRef)
     onDragEnd*: proc(this:DivRef)
     onDragOver*: proc(this:DivRef)
+    onDragCancel*: proc(this:DivRef) # Escape cancels the drag
     onDrop*: proc(this:DivRef)
+
+    # generic begin-state for drags (saved once per drag in default_onDragStart)
+    origX1*, origY1*: int
+    dragSaved*: bool
 
     onClick*: proc(this:DivRef, e:sdl.Event)
     onTextInput*: proc(this:DivRef, text:string)
@@ -219,6 +235,18 @@ type
 
 
 
+
+  #------------------------------------------------------
+
+  ScrollBar* = ref object of RootObj
+    ## standalone overlay scrollbar - NOT a child in any layer
+    parent*: DivRef # the scrollable container
+    pgui*: Pgui
+    window*: PgWindow
+    vTrack*, vSlider*, vUp*, vDown*: DivRef
+    hTrack*, hSlider*, hLeft*, hRight*: DivRef
+    vScroll*, hScroll*: bool # derived in recalcScrollbar
+    beginScrollX*, beginScrollY*: int # for Escape-cancel
 
   #------------------------------------------------------
 
@@ -240,6 +268,8 @@ type
 
     mouseSource*:DivRef # drag and drop
     #mouseTarget*:DivRef # drag and drop
+
+    mouseX*, mouseY*: int # last cursor pos (for drags like the scrollbar slider)
 
     fonts*:TableRef[string, ttf.FontPtr]
 
@@ -298,6 +328,7 @@ proc `=destroy`(this: var DivObj) =
   `=destroy`(this.onDragStart)
   `=destroy`(this.onDragEnd)
   `=destroy`(this.onDragOver)
+  `=destroy`(this.onDragCancel)
   `=destroy`(this.onDrop)
   `=destroy`(this.onClick)
   `=destroy`(this.onTextInput)
@@ -396,6 +427,7 @@ proc newStyleSheet*(): StyleSheetRef =
 
   result.padding = -1
   result.spacing = -1
+  result.overFlow = ofScroll
 
 
 proc clearStyleSheet*(s: StyleSheetRef) =
@@ -412,6 +444,7 @@ proc clearStyleSheet*(s: StyleSheetRef) =
 
   s.padding = -1
   s.spacing = -1
+  s.overFlow = ofScroll
 
 
 proc addPseudoStyle*(parent, child: StyleSheetRef, childName :string)=
@@ -441,6 +474,8 @@ proc `<-`*(t: StyleSheetRef, s: StyleSheetRef)=
   #echo t.padding, " <- ", s.padding
   if s.padding > -1: t.padding = s.padding
   if s.spacing > -1: t.spacing = s.spacing
+  # ofScroll is the default, only the explicit opt-out propagates
+  if s.overFlow == ofHidden: t.overFlow = s.overFlow
 
 template updateWith*(t: StyleSheetRef, s: StyleSheetRef)=
   t <- s

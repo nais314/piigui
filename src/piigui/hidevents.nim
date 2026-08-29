@@ -42,7 +42,16 @@ proc hid_events*(pgui:Pgui): bool = # exit pgui on true
       pgui.currentWindowId = eventObj.windowID # set activeWindow # todo setter events focus window
       # Exit on Escape key press
       if eventObj.keysym.sym == sdl.K_Escape:
-        return true
+        if pgui.mouseSource != nil:
+          # Escape cancels the drag: restore the begin state
+          if pgui.mouseSource.onDragCancel != nil:
+            pgui.mouseSource.onDragCancel(pgui.mouseSource)
+          else:
+            piigui.default_onDragCancel(pgui.mouseSource)
+          pgui.mouseSource.dragSaved = false
+          pgui.mouseSource = nil
+        else:
+          return true
       when debug >= 2:
         echo eventObj.keysym.sym
         echo eventObj.keysym.scancode.int
@@ -59,6 +68,9 @@ proc hid_events*(pgui:Pgui): bool = # exit pgui on true
       when debug >= 1:
         #echo "> X: ",eventObj.x, " Y: ", eventObj.y
         echo eventObj.motion
+
+      pgui.mouseX = eventObj.x
+      pgui.mouseY = eventObj.y
       
       let eventTarget = getElementAtCoord(
         pgui.windows[eventObj.windowID].rootElem,
@@ -74,13 +86,16 @@ proc hid_events*(pgui:Pgui): bool = # exit pgui on true
         # if there was onmousedown before
         # then its a drag/dragover operation:
         if pgui.mouseSource != nil:
-          if pgui.mouseSource == eventTarget and
-            pgui.mouseSource.activeStyle != "dragstart":#!dragstart
-                if eventTarget.onDragStart != nil:
-                  eventTarget.onDragStart(eventTarget)
-          else:
-            if eventTarget.onDragOver != nil:
-              eventTarget.onDragOver(eventTarget)
+          # start the drag once (the begin state is saved at that point),
+          # then the drag SOURCE receives the motion so it can clamp
+          # itself to its parent, and the hovered TARGET also gets
+          # onDragOver as drop-target feedback.
+          if not pgui.mouseSource.dragSaved and pgui.mouseSource.onDragStart != nil:
+            pgui.mouseSource.onDragStart(pgui.mouseSource)
+          if pgui.mouseSource.onDragOver != nil:
+            pgui.mouseSource.onDragOver(pgui.mouseSource)
+          if eventTarget != pgui.mouseSource and eventTarget.onDragOver != nil:
+            eventTarget.onDragOver(eventTarget)
 
         # elif its a simple hover event:
         elif eventTarget.onHover != nil:
@@ -153,6 +168,8 @@ proc hid_events*(pgui:Pgui): bool = # exit pgui on true
 
 
           
+      if pgui.mouseSource != nil:
+        pgui.mouseSource.dragSaved = false
       pgui.mouseSource = nil
       #pgui.mouseTarget = nil
 
@@ -166,18 +183,28 @@ proc hid_events*(pgui:Pgui): bool = # exit pgui on true
         #pgui.window = pgui.windows[eventObj.windowID].window
         #pgui.renderer = pgui.windows[eventObj.windowID].renderer
 
+        var handled = false
         if eventObj.y > 0:
           when debug > 0: echo "wheelup"
-          discard pgui.hoverElem.trigger("wheelup")
+          handled = pgui.hoverElem.trigger("wheelup")
         elif eventObj.y < 0:
           when debug > 0: echo "wheeldown"
-          discard pgui.hoverElem.trigger("wheeldown")
+          handled = pgui.hoverElem.trigger("wheeldown")
         elif eventObj.x > 0:
           when debug > 0: echo "wheelright"
-          discard pgui.hoverElem.trigger("wheelright")
+          handled = pgui.hoverElem.trigger("wheelright")
         elif eventObj.x < 0:
           when debug > 0: echo "wheelleft"
-          discard pgui.hoverElem.trigger("wheelleft")
+          handled = pgui.hoverElem.trigger("wheelleft")
+
+        # if no listener handled it, scroll the nearest scrollable ancestor
+        if not handled:
+          var cur = pgui.hoverElem
+          while cur != nil:
+            if cur.scrollable and cur.scrollbar != nil:
+              scrollWheel(cur, eventObj.x, eventObj.y)
+              break
+            cur = cur.parent
 
 
     elif e.kind == sdl.TEXTINPUT: #! ----- TEXTINPUT

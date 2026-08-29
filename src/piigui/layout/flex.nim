@@ -109,48 +109,57 @@ proc recalcFlex*(this: Divref, layer: Layer): tuple[w,h:int] =
     lines: seq[seq[DivRef]]
     lineDims: seq[tuple[w,h, x,y:int]]
 
-  var  #* padding *#
+  var
     availW: int # form line from parent.w downto 0
     availH: int
-    #thisX2: int # thisX2 = this.x2 - this.style.padding #TODO DELETE
     thisY2: int # thisY2 = this.y2 - this.style.padding
-    nextX = this.x1 + this.style.padding
-    nextY = this.y1 + this.style.padding # used at line calculation #padding#
-
+    nextX: int
+    nextY: int # used at line calculation #padding#
     line: seq[DivRef] # the current line
     lineH: int
     lineW: int
-
     totalW: int # used at aligning the whole area
     totalH: int # and by result
-
+    origiW: int # save original values for calculations
+    origiH: int
     article: Article
 
-  if this.style.padding > -1:
-    availW = this.w - (this.style.padding * 2) # used at line calculation
-    availH = this.h - (this.style.padding * 2)
-    #thisX2 = this.x2 - this.style.padding #TODO DELETE
-    thisY2 = this.y2 - this.style.padding
-
-    #if this.x1 > thisX2: thisX2 = this.x1 #boundaries check #TODO DELETE
-    if this.y1 > thisY2: thisY2 = this.y1 #boundaries check
-
-    if availW < 0: availW = 0 #boundaries check
-    if availH < 0: availH = 0 #boundaries check
-
-  else:
-    availW = this.w # used at line calculation
-    availH = this.h
-    #thisX2 = this.x2 #TODO DELETE
-    thisY2 = this.y2
-
-  #* padding calculated *#
-
-  let # save original values for calculations
+  proc resetState(availWArg, availHArg: int) =
+    ## (re)initializes the per-pass layout state
+    availW = availWArg
+    availH = availHArg
     origiW = availW
     origiH = availH
-  when debug > 1: echo "origi W x H: ", origiW, " x ", origiH
-  when debug > 1: echo "avail W x H: ", availW, " x ", availH
+    nextX = this.x1 + this.style.padding
+    nextY = this.y1 + this.style.padding
+    line.setLen(0)
+    lineH = 0
+    lineW = 0
+    totalW = 0
+    totalH = 0
+    article.lines = @[]
+    article.lineDims = @[]
+
+    if this.style.padding > -1:
+      thisY2 = this.y2 - this.style.padding
+      if this.y1 > thisY2: thisY2 = this.y1 #boundaries check
+    else:
+      thisY2 = this.y2
+    when debug > 1: echo "origi W x H: ", origiW, " x ", origiH
+    when debug > 1: echo "avail W x H: ", availW, " x ", availH
+
+  # base avail (padding), before scrollbar reservation
+  var
+    baseAvailW: int
+    baseAvailH: int
+  if this.style.padding > -1:
+    baseAvailW = this.w - (this.style.padding * 2)
+    baseAvailH = this.h - (this.style.padding * 2)
+    if baseAvailW < 0: baseAvailW = 0 #boundaries check
+    if baseAvailH < 0: baseAvailH = 0 #boundaries check
+  else:
+    baseAvailW = this.w # used at line calculation
+    baseAvailH = this.h
 
   #*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -289,23 +298,24 @@ proc recalcFlex*(this: Divref, layer: Layer): tuple[w,h:int] =
       88  Yb  YbodP     YP  YP                      
                                                             
       ]#
-      case this.style.justifyContent: #* ALIGN ROWS HORIZONTALLY IN PARENT
-        of fjcUndefined, fjcStart: discard
+      if totalW < origiW: # else scroll
+        case this.style.justifyContent: #* ALIGN ROWS HORIZONTALLY IN PARENT
+          of fjcUndefined, fjcStart: discard
 
-        of fjcEnd:
-          for i_line in 0..article.lines.high:
-            delta = origiW - article.lineDims[i_line].w
-            for i_elem in article.lines[i_line]:
-              i_elem.x1 += delta
-              i_elem.x2 += delta
-
-        of fjcCenter:
-          for i_line in 0..article.lines.high:
-            delta = (origiW - article.lineDims[i_line].w) div 2
-            if delta > 1:
+          of fjcEnd:
+            for i_line in 0..article.lines.high:
+              delta = origiW - article.lineDims[i_line].w
               for i_elem in article.lines[i_line]:
                 i_elem.x1 += delta
                 i_elem.x2 += delta
+
+          of fjcCenter:
+            for i_line in 0..article.lines.high:
+              delta = (origiW - article.lineDims[i_line].w) div 2
+              if delta > 1:
+                for i_elem in article.lines[i_line]:
+                  i_elem.x1 += delta
+                  i_elem.x2 += delta
 
 
 
@@ -430,6 +440,7 @@ dP   `" dP   Yb 88     88   88 88b  d88 88Yb88
 Yb      Yb   dP 88  .o Y8   8P 88YbdP88 88 Y88 
  YboodP  YbodP  88ood8 `YbodP' 88 YY 88 88  Y8 
  ]#
+      if totalH < origiH: # else scroll
         case this.style.justifyContent: #* ALIGN COLUMNS VERTICALLY IN PARENT
           of fjcUndefined,fjcStart: discard
           of fjcEnd:
@@ -479,6 +490,7 @@ Yb      Yb   dP 88  .o Y8   8P 88YbdP88 88 Y88
       lineH -= this.style.spacing
     # add line to Article for content distribution
     totalW += lineW
+    totalH += lineH #! content height (needed for scrollables)
     article.lines.add(line)
     article.lineDims.add((w: lineW, h: lineH, x: nextX, y:nextY))
     #~~~~~~~~~~~~~~~~~~~~~~
@@ -586,6 +598,7 @@ Yb      Yb   dP 88  .o Y8   8P 88YbdP88 88 Y88
       lineW -= this.style.spacing
     #if lineH < 1: lineH = availH
     totalH += lineH #! important
+    totalW += lineW #! content width (needed for scrollables)
     article.lines.add(line)
     article.lineDims.add((w: lineW, h: lineH, x: nextX, y:nextY))
     #~~~~~~~~~~~~~~~~~~~~~~
@@ -772,233 +785,250 @@ Yb      Yb   dP 88  .o Y8   8P 88YbdP88 88 Y88
       ██      ██████  ██   ██  ██████   ███ ███  
                                             
   ]#
-  if this.style.flexDirection == fdRow:#! ---- fdRow
-    #todo valign, align
-    when debug > 1: echo "#####  this.style.flexDirection == fdRow:"
-    for elem in layer.elems:
+  proc mainLayout() =
+    if this.style.flexDirection == fdRow:#! ---- fdRow
+      #todo valign, align
+      when debug > 1: echo "#####  this.style.flexDirection == fdRow:"
+      for elem in layer.elems:
 
-      if elem of BRElem:
-        newRow()
-        continue
-
-      case elem.h_unit: #.................. 
-        of muAuto, muStretch: 
-          #discard
-          elem.h = 1#availH #origiH #!NEW
-        of muPx:
-          elem.h = elem.h_value
-        of muPc:
-          elem.h = (origiH.float / (100.float / elem.h_value.float)).floor.int - 1
-          #if elem.h > availH: elem.h = origiH
-
-      #!TEST: if lineH < elem.h: lineH = elem.h #TODO boundaries and sanity check
-
-
-      case elem.w_unit: #.................. 
-        of muAuto,muStretch:
-          # not the same as justify stretch
-          # useful for the last elem in the row
-          # for multiple elems see flexGrow!
-          elem.w = availW
-          line.add(elem)
-          # coordinates
-          elem.x1 = nextX
-          elem.x2 = nextX + elem.w - 1
-          elem.y1 = nextY
-          elem.y2 = nextY + elem.h - 1
-          lineW += elem.w #!
+        if elem of BRElem:
           newRow()
+          continue
 
-        of muPx:
-          elem.w = elem.w_value
-          if availW - elem.w < 0:
+        case elem.h_unit: #.................. 
+          of muAuto, muStretch: 
+            #discard
+            elem.h = 1#availH #origiH #!NEW
+          of muPx:
+            elem.h = elem.h_value
+          of muPc:
+            elem.h = (origiH.float / (100.float / elem.h_value.float)).floor.int - 1
+            #if elem.h > availH: elem.h = origiH
+
+        #!TEST: if lineH < elem.h: lineH = elem.h #TODO boundaries and sanity check
+
+
+        case elem.w_unit: #.................. 
+          of muAuto,muStretch:
+            # not the same as justify stretch
+            # useful for the last elem in the row
+            # for multiple elems see flexGrow!
+            elem.w = availW
+            line.add(elem)
+            # coordinates
+            elem.x1 = nextX
+            elem.x2 = nextX + elem.w - 1
+            elem.y1 = nextY
+            elem.y2 = nextY + elem.h - 1
+            lineW += elem.w #!
             newRow()
-          
-          lineW += elem.w  
-          availW -= elem.w
-          line.add(elem)
-          # coordinates
-          elem.x1 = nextX
-          elem.x2 = nextX + elem.w - 1
-          elem.y1 = nextY
-          elem.y2 = nextY + elem.h - 1
-          nextX = nextX + elem.w
-          if this.style.spacing > -1: 
-            nextX += this.style.spacing
-            lineW += this.style.spacing
-            availW -= this.style.spacing
 
-        of muPc:
-          elem.w = (origiW.float / (100.float / elem.w_value.float)).floor.int - 1
-          if availW - elem.w <= 0:
-            newRow()
-          
-          lineW += elem.w
-          availW -= elem.w
-          line.add(elem)
-          # coordinates
-          elem.x1 = nextX
-          elem.x2 = nextX + elem.w - 1
-          elem.y1 = nextY
-          elem.y2 = nextY + elem.h - 1
-          nextX = nextX + elem.w
-          if this.style.spacing > -1:
-            nextX += this.style.spacing
-            lineW += this.style.spacing
-            availW -= this.style.spacing
+          of muPx:
+            elem.w = elem.w_value
+            if availW - elem.w < 0:
+              newRow()
 
-          when debug > 1: echo "row muPc ", elem.w_value,"->",elem.w," aW:", availW
+            lineW += elem.w  
+            availW -= elem.w
+            line.add(elem)
+            # coordinates
+            elem.x1 = nextX
+            elem.x2 = nextX + elem.w - 1
+            elem.y1 = nextY
+            elem.y2 = nextY + elem.h - 1
+            nextX = nextX + elem.w
+            if this.style.spacing > -1: 
+              nextX += this.style.spacing
+              lineW += this.style.spacing
+              availW -= this.style.spacing
 
-      if lineH < elem.h: lineH = elem.h #TODO boundaries and sanity check
+          of muPc:
+            elem.w = (origiW.float / (100.float / elem.w_value.float)).floor.int - 1
+            if availW - elem.w <= 0:
+              newRow()
 
+            lineW += elem.w
+            availW -= elem.w
+            line.add(elem)
+            # coordinates
+            elem.x1 = nextX
+            elem.x2 = nextX + elem.w - 1
+            elem.y1 = nextY
+            elem.y2 = nextY + elem.h - 1
+            nextX = nextX + elem.w
+            if this.style.spacing > -1:
+              nextX += this.style.spacing
+              lineW += this.style.spacing
+              availW -= this.style.spacing
 
+            when debug > 1: echo "row muPc ", elem.w_value,"->",elem.w," aW:", availW
 
-      when debug > 1:
-        echo elem.name, " flex w/h: ", elem.w, " / ", elem.h
-        echo elem.name, " flex x1,y1: ", elem.x1, ", ", elem.y1
-        echo elem.name, " flex x2,y2: ", elem.x2, ", ", elem.y2
-        echo elem.name, ", padding: ", this.style.padding
-        echo ""
-
-    if line.len > 0: postProcessRow() # post process last row
-    
-    if totalH < origiH: distributeContent() # TODO: scroll
-    
-    #TODO SCROLL
-
-  #[
-
-  888888 8888b.   dP""b8  dP"Yb  88     88   88 8b    d8 88b 88 
-  88__    8I  Yb dP   `" dP   Yb 88     88   88 88b  d88 88Yb88 
-  88""    8I  dY Yb      Yb   dP 88  .o Y8   8P 88YbdP88 88 Y88 
-  88     8888Y"   YboodP  YbodP  88ood8 `YbodP' 88 YY 88 88  Y8 
-  
-  ]#
-  #!................................
-  elif this.style.flexDirection == fdColumn:#!---- fdColumn
-    ## calculate childs position Vertically
-
-    when debug > 0: echo " START FDCOLUMN ", this.name
-
-    #todo valign, align
-
-    for elem in layer.elems:
-      #echo "test  ", elem.name
-      if elem of BRElem:
-        newColumn()
-        continue
-
-      case elem.w_unit:
-        #[ of muAuto:
-          #? elem.w = elem.w_value
-          #(elem.w, elem.h) = elem.recalc(elem)
-          discard ]#
-
-        of muAuto,muStretch:#todo test
-          elem.w = availW
-
-        of muPx:
-          elem.w = elem.w_value
-
-        of muPc:
-          elem.w = (origiW.float / (100.float / elem.w_value.float)).floor.int - 1
+        if lineH < elem.h: lineH = elem.h #TODO boundaries and sanity check
 
 
-      if lineW < elem.w: lineW = elem.w  #todo
 
+        when debug > 1:
+          echo elem.name, " flex w/h: ", elem.w, " / ", elem.h
+          echo elem.name, " flex x1,y1: ", elem.x1, ", ", elem.y1
+          echo elem.name, " flex x2,y2: ", elem.x2, ", ", elem.y2
+          echo elem.name, ", padding: ", this.style.padding
+          echo ""
 
-      case elem.h_unit: # H H H H H H H H H H H H H H H H H H 
-        of muAuto, #: #discard # calculated #TODO think
-          muStretch:
-          when debug > 1: echo "muStretch"
-          elem.h = availH
-          line.add(elem)
-          availH -= elem.h
-          #line.add(elem) #????
-          lineH += elem.h
-          # coordinates
-          elem.x1 = nextX
-          elem.x2 = nextX + elem.w - 1
-          elem.y1 = nextY
-          elem.y2 = nextY + elem.h - 1
-          nextY = nextY + elem.h
-          #[ if this.style.spacing > -1:
-            nextY += this.style.spacing
-            lineH += this.style.spacing
-            availH -= this.style.spacing ]#
-          ####
+      if line.len > 0: postProcessRow() # post process last row
+
+      if totalH < origiH: distributeContent() # TODO: scroll
+
+      #TODO SCROLL
+
+    #[
+
+    888888 8888b.   dP""b8  dP"Yb  88     88   88 8b    d8 88b 88 
+    88__    8I  Yb dP   `" dP   Yb 88     88   88 88b  d88 88Yb88 
+    88""    8I  dY Yb      Yb   dP 88  .o Y8   8P 88YbdP88 88 Y88 
+    88     8888Y"   YboodP  YbodP  88ood8 `YbodP' 88 YY 88 88  Y8 
+
+    ]#
+    #!................................
+    elif this.style.flexDirection == fdColumn:#!---- fdColumn
+      ## calculate childs position Vertically
+
+      when debug > 0: echo " START FDCOLUMN ", this.name
+
+      #todo valign, align
+
+      for elem in layer.elems:
+        #echo "test  ", elem.name
+        if elem of BRElem:
           newColumn()
+          continue
 
-        of muPx:
-          elem.h = elem.h_value
-          if availH - elem.h < 0:
-            when debug > 1: echo "availH - elem.h < 0: ", availH, " - ", elem.h, " !"
+        case elem.w_unit:
+          #[ of muAuto:
+            #? elem.w = elem.w_value
+            #(elem.w, elem.h) = elem.recalc(elem)
+            discard ]#
+
+          of muAuto,muStretch:#todo test
+            elem.w = availW
+
+          of muPx:
+            elem.w = elem.w_value
+
+          of muPc:
+            elem.w = (origiW.float / (100.float / elem.w_value.float)).floor.int - 1
+
+
+        if lineW < elem.w: lineW = elem.w  #todo
+
+
+        case elem.h_unit: # H H H H H H H H H H H H H H H H H H 
+          of muAuto, #: #discard # calculated #TODO think
+            muStretch:
+            when debug > 1: echo "muStretch"
+            elem.h = availH
+            line.add(elem)
+            availH -= elem.h
+            #line.add(elem) #????
+            lineH += elem.h
+            # coordinates
+            elem.x1 = nextX
+            elem.x2 = nextX + elem.w - 1
+            elem.y1 = nextY
+            elem.y2 = nextY + elem.h - 1
+            nextY = nextY + elem.h
+            #[ if this.style.spacing > -1:
+              nextY += this.style.spacing
+              lineH += this.style.spacing
+              availH -= this.style.spacing ]#
+            ####
             newColumn()
 
-          availH -= elem.h
-          line.add(elem)
-          lineH += elem.h
-          # coordinates
-          elem.x1 = nextX
-          elem.x2 = nextX + elem.w - 1
-          elem.y1 = nextY
-          elem.y2 = nextY + elem.h - 1
-          nextY = nextY + elem.h
-          if this.style.spacing > -1:
-            nextY += this.style.spacing
-            lineH += this.style.spacing
-            availH -= this.style.spacing
-          #echo ">  availH ", availH, " this.h ", this.h
+          of muPx:
+            elem.h = elem.h_value
+            if availH - elem.h < 0:
+              when debug > 1: echo "availH - elem.h < 0: ", availH, " - ", elem.h, " !"
+              if not (this.style.overflow == ofScroll): newColumn()
 
-        of muPc:
-          elem.h = (origiH.float / (100.float / elem.h_value.float)).floor.int - 1
-          
-          if availH - elem.h <= 0:
-            when debug > 1: echo "availH - elem.h < 0: ", availH, " - ", elem.h, " !"
-            newColumn()
+            availH -= elem.h
+            line.add(elem)
+            lineH += elem.h
+            # coordinates
+            elem.x1 = nextX
+            elem.x2 = nextX + elem.w - 1
+            elem.y1 = nextY
+            elem.y2 = nextY + elem.h - 1
+            nextY = nextY + elem.h
+            if this.style.spacing > -1:
+              nextY += this.style.spacing
+              lineH += this.style.spacing
+              availH -= this.style.spacing
+            #echo ">  availH ", availH, " this.h ", this.h
 
-          availH -= elem.h
-          line.add(elem)
-          lineH += elem.h
-          # coordinates
-          elem.x1 = nextX
-          elem.x2 = nextX + elem.w - 1
-          elem.y1 = nextY
-          elem.y2 = nextY + elem.h - 1
-          nextY = nextY + elem.h
-          if this.style.spacing > -1:
-            nextY += this.style.spacing
-            lineH += this.style.spacing
-            availH -= this.style.spacing
+          of muPc:
+            elem.h = (origiH.float / (100.float / elem.h_value.float)).floor.int - 1
 
-      if lineW < elem.w: lineW = elem.w  #todo
+            if availH - elem.h <= 0:
+              when debug > 1: echo "availH - elem.h < 0: ", availH, " - ", elem.h, " !"
+              if not (this.style.overflow == ofScroll): newColumn()
 
+            availH -= elem.h
+            line.add(elem)
+            lineH += elem.h
+            # coordinates
+            elem.x1 = nextX
+            elem.x2 = nextX + elem.w - 1
+            elem.y1 = nextY
+            elem.y2 = nextY + elem.h - 1
+            nextY = nextY + elem.h
+            if this.style.spacing > -1:
+              nextY += this.style.spacing
+              lineH += this.style.spacing
+              availH -= this.style.spacing
 
-
-      when debug > 1:
-        echo elem.name, " w/h: ", elem.w, " / ", elem.h
-        echo elem.name, " x1/x2: ", elem.x1, " / ", elem.x2
-        echo elem.name, " y1,y2: " , elem.y1, " / ", elem.y2
-        echo elem.name, ", padding: ", this.style.padding
-        echo ""
-    
-    #todo justify
-    when debug > 1: echo "   Column line.len = ", line.len
-    if line.len > 0: postProcessColumn() # post process last row
-
-    if totalW < origiW: distributeContent() #TODO: scroll
-    #TODO SCROLL
+        if lineW < elem.w: lineW = elem.w  #todo
 
 
 
+        when debug > 1:
+          echo elem.name, " w/h: ", elem.w, " / ", elem.h
+          echo elem.name, " x1/x2: ", elem.x1, " / ", elem.x2
+          echo elem.name, " y1,y2: " , elem.y1, " / ", elem.y2
+          echo elem.name, ", padding: ", this.style.padding
+          echo ""
+
+      #todo justify
+      when debug > 1: echo "   Column line.len = ", line.len
+      if line.len > 0: postProcessColumn() # post process last row
+
+      if totalW < origiW: distributeContent() #TODO: scroll
+      #TODO SCROLL
+  proc layoutPass(availWArg, availHArg: int): tuple[w,h:int] =
+    resetState(availWArg, availHArg)
+    mainLayout()
+    result.w = totalW
+    result.h = totalH
+
+  # two-pass scrollbar space reservation
+  if this.parent != nil and this.style.overflow == ofScroll:
+    var (tw, th) = layoutPass(baseAvailW, baseAvailH)
+    var vS = th > baseAvailH # vertical scrollbar needed?
+    var hS = tw > baseAvailW # horizontal scrollbar needed?
+    if vS or hS:
+      var aw = baseAvailW - (if vS: ScrollBarSize else: 0)
+      var ah = baseAvailH - (if hS: ScrollBarSize else: 0)
+      (tw, th) = layoutPass(aw, ah)
+      vS = th > ah # re-check, rarely changes
+      hS = tw > aw
+    this.innerW = tw
+    this.innerH = th
+    result.w = tw
+    result.h = th
+  else:
+    result = layoutPass(baseAvailW, baseAvailH)
 
   this.isRecalculated = true
-  result.h = totalH
-  result.w = totalW
   when debug > 1: echo " ------ ENDFLEX ------ ", this.name, "\n"
   for elem in layer.elems:
     for elemLayer in elem.layers:
       if elemLayer.recalc != nil:
         (elemLayer.w, elemLayer.h) = elemLayer.recalc(elem, elemLayer)
-
-

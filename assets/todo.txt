@@ -1,7 +1,0 @@
-types.nim
-    #borderWidth*:tuple[top,right,bottom,left:int]
-    #background*:
-
-    layer:int
-
-

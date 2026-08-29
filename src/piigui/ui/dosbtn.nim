@@ -41,7 +41,7 @@ type DosBtn* = ref object of DivRef
 proc default_onBlur*(this:DivRef){.nosinks.}=
   DosBtn(this).state = 0 ]#
 
-proc draw*(self:DivRef) #!FWD
+proc draw*(self:DivRef, scrollX, scrollY:int) #!FWD
 proc onMouseButtonDown*(this:DivRef){.nosinks.} #!FWD
 proc onMouseButtonUp*(this:DivRef){.nosinks.} #!FWD
 proc dosbtn_onFocus*(this:DivRef){.nosinks.} #!FWD
@@ -128,7 +128,7 @@ proc newDosBtn*(parent: DivRef,
  ]#
 
 
-proc draw*(self:DivRef)=
+proc draw*(self:DivRef, scrollX, scrollY:int)=
   withLock self.lock:
     
     let this = DosBtn(self)
@@ -144,8 +144,13 @@ proc draw*(self:DivRef)=
       clipRect.w = this.w.cint
       clipRect.h = this.h.cint
     else:
-      clipRect.x = this.parent.x1.cint
-      clipRect.y = this.parent.y1.cint
+      var pAccX = scrollX
+      var pAccY = scrollY
+      if this.parent.scrollable:
+        pAccX -= this.parent.scrollX
+        pAccY -= this.parent.scrollY
+      clipRect.x = (this.parent.x1 - pAccX).cint
+      clipRect.y = (this.parent.y1 - pAccY).cint
       clipRect.w = this.parent.w.cint #(this.x2 - this.x1 + 1)
       clipRect.h = this.parent.h.cint #(this.y2 - this.y1 + 1)
     
@@ -165,8 +170,8 @@ proc draw*(self:DivRef)=
 
     # the area to paint to on the renderer
     var thisRect: sdl.Rect
-    thisRect.x = this.x1.cint
-    thisRect.y = this.y1.cint
+    thisRect.x = (this.x1 - scrollX).cint
+    thisRect.y = (this.y1 - scrollY).cint
     thisRect.w = this.w.cint
     thisRect.h = this.h.cint
 

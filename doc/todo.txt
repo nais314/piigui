@@ -1,0 +1,13 @@
+types.nim
+    #borderWidth*:tuple[top,right,bottom,left:int]
+    #background*:
+
+    layer:int
+
+
+textMatrixArea: a rectangle, it has rows and columns of monospace characters, like a terminal, except the scrolling.
+like an LCD screen. the characters can be modified individually.
+- support functions, like line, row, news-scroll
+
+
+sheetRow: a row of elements, can have background colors like red, green, blue, gray,

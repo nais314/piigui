@@ -53,7 +53,7 @@ proc default_onTextInput*(this: DivRef, val:string){.nosinks.}=
       self.redrawFlag = 1
 
 
-proc draw*(self:DivRef) #!FWD
+proc draw*(self:DivRef, scrollX, scrollY:int) #!FWD
 
 proc newTextBox*(parent: DivRef,
              layer:int = 0,
@@ -159,7 +159,7 @@ proc value*(this: TextBox):string= this.val
  ]#
 
 
-proc draw*(self:DivRef)=
+proc draw*(self:DivRef, scrollX, scrollY:int)=
   ## calculate inner x,y,w,h,etc
   ## if update only
   ## if visible
@@ -184,8 +184,13 @@ proc draw*(self:DivRef)=
       clipRect.w = this.w.cint
       clipRect.h = this.h.cint
     else:
-      clipRect.x = this.parent.x1.cint
-      clipRect.y = this.parent.y1.cint
+      var pAccX = scrollX
+      var pAccY = scrollY
+      if this.parent.scrollable:
+        pAccX -= this.parent.scrollX
+        pAccY -= this.parent.scrollY
+      clipRect.x = (this.parent.x1 - pAccX).cint
+      clipRect.y = (this.parent.y1 - pAccY).cint
       clipRect.w = this.parent.w.cint #(this.x2 - this.x1 + 1)
       clipRect.h = this.parent.h.cint #(this.y2 - this.y1 + 1)
     discard sdl.setClipRect(this.pgui.renderer, clipRect.addr)
@@ -204,8 +209,8 @@ proc draw*(self:DivRef)=
 
     # the area to paint to
     var thisRect: sdl.Rect
-    thisRect.x = this.x1.cint
-    thisRect.y = this.y1.cint
+    thisRect.x = (this.x1 - scrollX).cint
+    thisRect.y = (this.y1 - scrollY).cint
     thisRect.w = this.w.cint
     thisRect.h = this.h.cint
 

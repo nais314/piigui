@@ -20,6 +20,8 @@ export types
 
 import piigui/layout/flex
 import piigui/layout/vhbox
+import piigui/ui/scrollbar
+export scrollbar
 
 
 ###########################################
@@ -161,9 +163,16 @@ proc parent_onFocus*(this:DivRef){.nosinks.}=
 proc default_onDragStart*(this:DivRef){.nosinks.}=
   ## useful, if you not need special proc
   echo " * DRAG START * DRAG START * DRAG START * "
+  # save begin state once, so Escape can restore it
+  if not this.dragSaved:
+    this.origX1 = this.x1
+    this.origY1 = this.y1
+    this.dragSaved = true
   #setDefaultStyle(this) # hover
   this.setActiveStyle("dragstart")
   this.pgui.hoverElem = nil
+
+proc setPosition*(this: DivRef, x,y:int) #!FWD
 
 proc parent_onDragStart*(this:DivRef){.nosinks.}=
   this.parent.onDragStart(this.parent)
@@ -173,6 +182,7 @@ proc parent_onDragStart*(this:DivRef){.nosinks.}=
 proc default_onDragEnd*(this:DivRef){.nosinks.}=
   ## useful, if you not need special proc
   setDefaultStyle(this)
+  this.dragSaved = false
   #echo " * DRAGEND * DRAGEND * DRAGEND * "
   if this.pgui.hoverElem != nil:
     this.pgui.hoverElem.setDefaultStyle()
@@ -181,6 +191,17 @@ proc default_onDragEnd*(this:DivRef){.nosinks.}=
 proc parent_onDragEnd*(this:DivRef){.nosinks.}=
   this.parent.onDragEnd(this.parent)
 #...........
+
+
+proc default_onDragCancel*(this:DivRef){.nosinks.}=
+  ## Escape pressed mid-drag: restore the begin state
+  if this.dragSaved:
+    this.setPosition(this.origX1, this.origY1)
+    this.dragSaved = false
+  setDefaultStyle(this)
+  if this.pgui.hoverElem != nil:
+    this.pgui.hoverElem.setDefaultStyle()
+    this.pgui.hoverElem = nil
 
 
 proc default_onDragOver*(this:DivRef){.nosinks.}=
@@ -217,7 +238,19 @@ proc parent_onDragOver*(this:DivRef){.nosinks.}=
 
 
 
-proc drawDivRef*(this:DivRef)=
+proc scrollOffset*(this:DivRef): tuple[x,y:int] =
+  ## sum of scrollX/scrollY of all scrollable ancestors.
+  ## used to shift the destination rect of a drawn element
+  ## so scrolled content appears shifted inside its viewport.
+  var cur = this.parent
+  while cur != nil:
+    if cur.scrollable:
+      result.x += cur.scrollX
+      result.y += cur.scrollY
+    cur = cur.parent
+
+
+proc drawDivRef*(this:DivRef, scrollX, scrollY:int)=
   const debug = 0
 
   when debug > 1: echo this.name
@@ -232,6 +265,10 @@ proc drawDivRef*(this:DivRef)=
 
   #.............................
   # clipRect hide overflow
+  # the parent's on-screen rect is shifted by its own ancestor scroll,
+  # so the clip must subtract that too
+  # (scrollX/Y = this element's accumulated ancestor scroll; the parent's
+  #  offset is that minus the parent's own scroll, if the parent scrolls)
   var clipRect: sdl.Rect
   if this.parent == nil:  #padding# 
     clipRect.x = this.x1.cint
@@ -239,8 +276,13 @@ proc drawDivRef*(this:DivRef)=
     clipRect.w = this.w.cint
     clipRect.h = this.h.cint
   else:
-    clipRect.x = this.parent.x1.cint
-    clipRect.y = this.parent.y1.cint
+    var pAccX = scrollX
+    var pAccY = scrollY
+    if this.parent.scrollable:
+      pAccX -= this.parent.scrollX
+      pAccY -= this.parent.scrollY
+    clipRect.x = (this.parent.x1 - pAccX).cint
+    clipRect.y = (this.parent.y1 - pAccY).cint
     clipRect.w = this.parent.w.cint #(this.x2 - this.x1 + 1)
     clipRect.h = this.parent.h.cint #(this.y2 - this.y1 + 1)
   discard sdl.setClipRect(this.pgui.renderer, clipRect.addr)
@@ -257,10 +299,11 @@ proc drawDivRef*(this:DivRef)=
 
   #.............................
 
-  # the area of this elem on the screen 
+  # the area of this elem on the screen
+  # shifted by the accumulated scroll offsets of its scrollable ancestors
   var thisRect: sdl.Rect
-  thisRect.x = this.x1.cint
-  thisRect.y = this.y1.cint
+  thisRect.x = (this.x1 - scrollX).cint
+  thisRect.y = (this.y1 - scrollY).cint
   thisRect.w = this.w.cint
   thisRect.h = this.h.cint
 
@@ -421,6 +464,10 @@ proc newDiv*(parent: DivRef,
 
   result.onHover = piigui.default_onHover
   result.onFocus = piigui.default_onFocus
+  result.onDragStart = piigui.default_onDragStart
+  result.onDragEnd = piigui.default_onDragEnd
+  result.onDragOver = piigui.default_onDragOver
+  result.onDragCancel = piigui.default_onDragCancel
 
   result.inlineStyle = newStyleSheet()
   result.styleCache = newTable[string, StyleSheetRef](4)
@@ -726,13 +773,28 @@ proc newWindow*(pgui:Pgui,
 
 
 
-proc drawDOM*(pgui:Pgui, r:DivRef)=
-  if r.draw != nil: r.draw(r)
+proc drawDOMImpl(pgui:Pgui, r:DivRef, scrollX, scrollY:int)=
+  ## draw the tree, carrying the accumulated scroll offsets of the
+  ## scrollable ancestors down to every element.
+  if r.draw != nil: r.draw(r, scrollX, scrollY)
 
+  # r's own children are shifted by r's scroll, if r is scrollable
+  let nX = scrollX + (if r.scrollable: r.scrollX else: 0)
+  let nY = scrollY + (if r.scrollable: r.scrollY else: 0)
   for layer in r.layers:
     for elem in layer.elems:
-          
-      drawDOM(pgui, elem)
+      drawDOMImpl(pgui, elem, nX, nY)
+
+  # the scrollbar overlay sits in the owner's frame (its own scroll NOT applied)
+  if r.scrollable and r.scrollbar != nil:
+    drawScrollBar(r.scrollbar, scrollX, scrollY)
+
+proc drawDOM*(pgui:Pgui, r:DivRef)=
+  ## draw a tree (or subtree) from its root.
+  ## the first call seeds the offset with the element's own scrollable
+  ## ancestors, so it can be called with any element, not just the root.
+  let off = scrollOffset(r)
+  drawDOMImpl(pgui, r, off.x, off.y)
 
 #..................................
 
@@ -740,6 +802,9 @@ proc recalcDOM*(rootElem: DivRef)=
   for layer in rootElem.layers:
     if layer.recalc != nil:
       (layer.w, layer.h) = layer.recalc(rootElem, layer)
+
+  # position scrollbar overlays after the layout settles
+  recalcScrollbars(rootElem)
 
 template recalcDOM*(win:PgWindow)=
   recalcDOM(win.rootElem)
@@ -759,33 +824,42 @@ template recalcDOM*(win:PgWindow)=
 proc getElementAtCoord*(root: DivRef, x,y:int): DivRef =
   ## gets element clicked on
   ## search from top to bottom
-  const debug = 0
-  
-  result = nil
-  #echo "getElementAtCoord_______________"
-  for i_layer in countdown(root.layers.high,0):
+  ## x,y are screen coords; the scroll offsets of scrollable
+  ## ancestors are added so scrolled content is hit correctly.
+
+  proc rec(elem: DivRef, accX, accY: int): DivRef =
+    # elem and its children are clipped to elem's on-screen rect,
+    # so if the point is outside it, nothing inside can be hit
+    # (this also hides overflowed content of non-scrollable parents)
+    let ex = x + accX
+    let ey = y + accY
+    if ex < elem.x1 or ex > elem.x2 or ey < elem.y1 or ey > elem.y2:
+      return nil
+
+    # the scrollbar overlay sits on top of elem's content
+    if elem.scrollable and elem.scrollbar != nil:
+      result = elem.scrollbar.hitTest(ex, ey)
+      if result != nil:
+        return result
+
+    # elem's own children are shifted by elem's scroll too
+    let cAccX = accX + (if elem.scrollable: elem.scrollX else: 0)
+    let cAccY = accY + (if elem.scrollable: elem.scrollY else: 0)
+    for i_layer in countdown(elem.layers.high, 0):
+      for child in elem.layers[i_layer].elems:
+        result = rec(child, cAccX, cAccY)
+        if result != nil:
+          return result
+
+    # the point is inside elem (checked above); return it.
+    # (the root is never passed to rec, so elem.parent is always non-nil)
+    return elem
+
+  for i_layer in countdown(root.layers.high, 0):
     for elem in root.layers[i_layer].elems:
-      var resultElem = getElementAtCoord(elem,x,y)
-      if resultElem != nil:
-        return resultElem
-      else:
-        if elem.x1 <= x and
-           elem.x2 >= x and
-           elem.y1 <= y and
-           elem.y2 >= y:
-              when debug > 1: echo "---- PLAUSIBLE ", elem.name, ":", $type(elem),", ",elem.x1,",",elem.y1,",",elem.x2,",",elem.y2,",", "\n"
-              if elem.parent != nil:
-                when debug > 1: echo "---- parent ",  elem.parent.name, ":",elem.parent.x1,",",elem.parent.y1,",",elem.parent.x2,",",elem.parent.y2,",", "\n"
-                if elem.parent.x1 <= x and
-                   elem.parent.x2 >= x and
-                   elem.parent.y1 <= y and
-                   elem.parent.y2 >= y:
-                      when debug > 0: echo "---- FOUND ",  elem.name, ":",elem.x1,",",elem.y1,",",elem.x2,",",elem.y2,",", "\n"
-                      return elem
-              else:
-                when debug > 0: echo "~~~~ FOUND ",  elem.name, ":",elem.x1,",",elem.y1,",",elem.x2,",",elem.y2,",", "\n"
-                return elem
-  #echo "................................"
+      result = rec(elem, 0, 0)
+      if result != nil:
+        return result
 
 
 
