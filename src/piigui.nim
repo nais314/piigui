@@ -19,7 +19,8 @@ import piigui/[types,style]
 export types
 
 import piigui/layout/flex
-import piigui/layout/vhbox
+import piigui/layout/recalcH as recalcHMod
+import piigui/layout/recalcV as recalcVMod
 import piigui/ui/scrollbar
 export scrollbar
 
@@ -250,6 +251,50 @@ proc scrollOffset*(this:DivRef): tuple[x,y:int] =
     cur = cur.parent
 
 
+proc visibleClipRect*(this: DivRef, scrollX, scrollY: int): sdl.Rect =
+  ## On-screen clip rect for drawing `this`: the intersection of the
+  ## on-screen rects of every ancestor, each shifted by its own
+  ## ancestors' accumulated scroll. A deep child is therefore clipped
+  ## inside every scrollable ancestor, not only its direct parent.
+  ## `scrollX/Y` is the accumulated scroll of `this`'s ancestors,
+  ## as passed down by drawDOMImpl.
+  if this.parent == nil:
+    return (x: this.x1.cint, y: this.y1.cint,
+            w: this.w.cint, h: this.h.cint)
+
+  # accX/Y = the parent's accumulated ancestor scroll
+  # (the parent's own scroll shifts its children, not the parent itself)
+  var accX = scrollX
+  var accY = scrollY
+  if this.parent.scrollable:
+    accX -= this.parent.scrollX
+    accY -= this.parent.scrollY
+
+  var
+    minX = this.parent.x1 - accX
+    minY = this.parent.y1 - accY
+    maxX = this.parent.x2 - accX
+    maxY = this.parent.y2 - accY
+
+  var ancestor = this.parent.parent
+  while ancestor != nil:
+    if ancestor.scrollable:
+      accX -= ancestor.scrollX
+      accY -= ancestor.scrollY
+    minX = max(minX, ancestor.x1 - accX)
+    minY = max(minY, ancestor.y1 - accY)
+    maxX = min(maxX, ancestor.x2 - accX)
+    maxY = min(maxY, ancestor.y2 - accY)
+    ancestor = ancestor.parent
+
+  if minX > maxX or minY > maxY: # empty intersection: nothing visible
+    return (x: 0.cint, y: 0.cint, w: 0.cint, h: 0.cint)
+
+  return (x: minX.cint, y: minY.cint,
+          w: (maxX - minX + 1).cint,
+          h: (maxY - minY + 1).cint)
+
+
 proc drawDivRef*(this:DivRef, scrollX, scrollY:int)=
   const debug = 0
 
@@ -264,27 +309,11 @@ proc drawDivRef*(this:DivRef, scrollX, scrollY:int)=
       echo "___________"
 
   #.............................
-  # clipRect hide overflow
-  # the parent's on-screen rect is shifted by its own ancestor scroll,
-  # so the clip must subtract that too
-  # (scrollX/Y = this element's accumulated ancestor scroll; the parent's
-  #  offset is that minus the parent's own scroll, if the parent scrolls)
-  var clipRect: sdl.Rect
-  if this.parent == nil:  #padding# 
-    clipRect.x = this.x1.cint
-    clipRect.y = this.y1.cint
-    clipRect.w = this.w.cint
-    clipRect.h = this.h.cint
-  else:
-    var pAccX = scrollX
-    var pAccY = scrollY
-    if this.parent.scrollable:
-      pAccX -= this.parent.scrollX
-      pAccY -= this.parent.scrollY
-    clipRect.x = (this.parent.x1 - pAccX).cint
-    clipRect.y = (this.parent.y1 - pAccY).cint
-    clipRect.w = this.parent.w.cint #(this.x2 - this.x1 + 1)
-    clipRect.h = this.parent.h.cint #(this.y2 - this.y1 + 1)
+  # clipRect hide overflow:
+  # the intersection of all ancestors' on-screen rects, so content
+  # stays clipped inside every scrollable ancestor, not just the parent.
+  # (scrollX/Y = this element's accumulated ancestor scroll)
+  var clipRect = visibleClipRect(this, scrollX, scrollY)
   discard sdl.setClipRect(this.pgui.renderer, clipRect.addr)
   #.............................
 
@@ -855,9 +884,18 @@ proc getElementAtCoord*(root: DivRef, x,y:int): DivRef =
     # (the root is never passed to rec, so elem.parent is always non-nil)
     return elem
 
+  # the root can scroll too: check its overlay at the window edge first
+  if root.scrollable and root.scrollbar != nil:
+    result = root.scrollbar.hitTest(x, y)
+    if result != nil:
+      return result
+
+  # root's children are shifted by the root's own scroll
+  let rAccX = if root.scrollable: root.scrollX else: 0
+  let rAccY = if root.scrollable: root.scrollY else: 0
   for i_layer in countdown(root.layers.high, 0):
     for elem in root.layers[i_layer].elems:
-      result = rec(elem, 0, 0)
+      result = rec(elem, rAccX, rAccY)
       if result != nil:
         return result
 

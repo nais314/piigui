@@ -6,7 +6,8 @@ import
 import piigui
 import piigui/[types, style, simple, hidevents]
 import piigui/layout/flex
-import piigui/layout/vhbox
+import piigui/layout/recalcH as recalcHMod
+import piigui/layout/recalcV as recalcVMod
 
 import piigui/ui/[dosbtn, label]
 
@@ -76,6 +77,18 @@ for i in 6 ..< 12:
     name = "hbtn" & $i,
     width = "120px", height = "60%",
     styles = ["demobtn"], text = "col" & $i)
+
+let br2 = new BRElem
+br2.parent = scrollRow
+br2.pgui = gui
+scrollRow.layers[0].elems.add(br)
+scrollRow.layers[0].renumberNthChild()
+for i in 12 ..< 20:
+  discard scrollRow.newDosBtn(
+    name = "hbtn" & $i,
+    width = "120px", height = "60%",
+    styles = ["demobtn"], text = "col" & $i)
+
 
 # clip test: ofHidden disables the scrollbar, extra parts are clipped away
 let clipCol = flexColumn(gui.rootElem, 0, "clipCol", "", "100%", "12%", ["demobtn"])

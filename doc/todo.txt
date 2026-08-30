@@ -11,3 +11,19 @@ like an LCD screen. the characters can be modified individually.
 
 
 sheetRow: a row of elements, can have background colors like red, green, blue, gray,
+
+
+
+DONE: vhbox -> recalcVbox & recalcHBox
+flex -> recalcFlexBox
+
+
+the most basic boilerplate code
+(create templates for human and ai)
+
+
+simple.nim:
+dynlib load when clause
+
+styles:
+default: fg, bg, focus

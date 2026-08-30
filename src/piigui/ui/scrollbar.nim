@@ -191,45 +191,42 @@ proc scrollArrow_draw(this: DivRef, dir: ArrowDir, scrollX, scrollY: int) =
 proc recalcScrollbar*(sb: ScrollBar) =
   ## position the overlay parts from the container's inner/content size.
   ## called after layout (recalcScrollbars) and after every scroll change.
-  let c = sb.parent
-  if c == nil: return
+  let sbParent = sb.parent
+  if sbParent == nil: return
 
-  let SB = ScrollBarSize
-  let AS = ScrollBarArrowSize
+  sb.vScroll = sbParent.innerH > sbParent.h
+  sb.hScroll = sbParent.innerW > sbParent.w
 
-  sb.vScroll = c.innerH > c.h
-  sb.hScroll = c.innerW > c.w
+  if sb.vScroll: # position vertical scrollbar parts (arrows, track, slider)
+    let vx = sbParent.x2 - ScrollBarSize + 1
+    let vDownY = sbParent.y2 - ScrollBarArrowSize + 1 - (if sb.hScroll: ScrollBarSize else: 0) # bottom arrow Y, accounting for horizontal scrollbar overlap
+    setRect(sb.vUp, vx, sbParent.y1, ScrollBarSize, ScrollBarArrowSize)
+    setRect(sb.vDown, vx, vDownY, ScrollBarSize, ScrollBarArrowSize)
+    let trackTop = sbParent.y1 + ScrollBarArrowSize
+    setRect(sb.vTrack, vx, trackTop, ScrollBarSize, vDownY - trackTop)
 
-  if sb.vScroll:
-    let vx = c.x2 - SB + 1
-    let vDownY = c.y2 - AS + 1 - (if sb.hScroll: SB else: 0)
-    setRect(sb.vUp, vx, c.y1, SB, AS)
-    setRect(sb.vDown, vx, vDownY, SB, AS)
-    let trackTop = c.y1 + AS
-    setRect(sb.vTrack, vx, trackTop, SB, vDownY - trackTop)
-
-    let tH = sb.vTrack.h
-    let maxScroll = max(0, c.innerH - c.h)
-    let sliderH = clampInt((tH * c.h) div max(1, c.innerH), ScrollBarMinSlider, tH)
+    let vtrackH = sb.vTrack.h
+    let maxScroll = max(0, sbParent.innerH - sbParent.h)
+    let sliderH = clampInt((vtrackH * sbParent.h) div max(1, sbParent.innerH), ScrollBarMinSlider, vtrackH) # proportional slider height, clamped to minimum
     let sliderY = if maxScroll > 0:
-                    sb.vTrack.y1 + ((tH - sliderH) * c.scrollY) div maxScroll
+                    sb.vTrack.y1 + ((vtrackH - sliderH) * sbParent.scrollY) div maxScroll
                   else:
                     sb.vTrack.y1
     setRect(sb.vSlider, sb.vTrack.x1, sliderY, sb.vTrack.w, sliderH)
 
-  if sb.hScroll:
-    let hy = c.y2 - SB + 1
-    let hRightX = c.x2 - AS + 1 - (if sb.vScroll: SB else: 0)
-    setRect(sb.hLeft, c.x1, hy, AS, SB)
-    setRect(sb.hRight, hRightX, hy, AS, SB)
-    let trackLeft = c.x1 + AS
-    setRect(sb.hTrack, trackLeft, hy, hRightX - trackLeft, SB)
+  if sb.hScroll: # position horizontal scrollbar parts (arrows, track, slider)
+    let hy = sbParent.y2 - ScrollBarSize + 1
+    let hRightX = sbParent.x2 - ScrollBarArrowSize + 1 - (if sb.vScroll: ScrollBarSize else: 0) # right arrow X, accounting for vertical scrollbar overlap
+    setRect(sb.hLeft, sbParent.x1, hy, ScrollBarArrowSize, ScrollBarSize)
+    setRect(sb.hRight, hRightX, hy, ScrollBarArrowSize, ScrollBarSize)
+    let trackLeft = sbParent.x1 + ScrollBarArrowSize
+    setRect(sb.hTrack, trackLeft, hy, hRightX - trackLeft, ScrollBarSize)
 
-    let tW = sb.hTrack.w
-    let maxScroll = max(0, c.innerW - c.w)
-    let sliderW = clampInt((tW * c.w) div max(1, c.innerW), ScrollBarMinSlider, tW)
+    let htrackW = sb.hTrack.w
+    let maxScroll = max(0, sbParent.innerW - sbParent.w)
+    let sliderW = clampInt((htrackW * sbParent.w) div max(1, sbParent.innerW), ScrollBarMinSlider, htrackW) # proportional slider width, clamped to minimum
     let sliderX = if maxScroll > 0:
-                    sb.hTrack.x1 + ((tW - sliderW) * c.scrollX) div maxScroll
+                    sb.hTrack.x1 + ((htrackW - sliderW) * sbParent.scrollX) div maxScroll
                   else:
                     sb.hTrack.x1
     setRect(sb.hSlider, sliderX, sb.hTrack.y1, sliderW, sb.hTrack.h)
@@ -253,25 +250,46 @@ proc scrollWheel*(this: DivRef, dx, dy: int) =
   ##            x > 0 is wheel-right (view toward right, scrollX increases)
   scrollBy(this, dx * ScrollBarWheelStep, -dy * ScrollBarWheelStep)
 
+
+#[ 
+########  ########  ######     ###    ##        ######                                         
+##     ## ##       ##    ##   ## ##   ##       ##    ##                                        
+##     ## ##       ##        ##   ##  ##       ##                                              
+########  ######   ##       ##     ## ##       ##                                              
+##   ##   ##       ##       ######### ##       ##                                              
+##    ##  ##       ##    ## ##     ## ##       ##    ##                                        
+##     ## ########  ######  ##     ## ########  ######                                         
+                                                                                               
+                                                                                            
+                                                                                               
+ ######   ######  ########   #######  ##       ##       ########     ###    ########   ######  
+##    ## ##    ## ##     ## ##     ## ##       ##       ##     ##   ## ##   ##     ## ##    ## 
+##       ##       ##     ## ##     ## ##       ##       ##     ##  ##   ##  ##     ## ##       
+ ######  ##       ########  ##     ## ##       ##       ########  ##     ## ########   ######  
+      ## ##       ##   ##   ##     ## ##       ##       ##     ## ######### ##   ##         ## 
+##    ## ##    ## ##    ##  ##     ## ##       ##       ##     ## ##     ## ##    ##  ##    ## 
+ ######   ######  ##     ##  #######  ######## ######## ########  ##     ## ##     ##  ######  
+ ]#
+
 proc newScrollBar(container: DivRef): ScrollBar #!FWD
 
-proc recalcScrollbars*(rootElem: DivRef) =
+proc recalcScrollbars*(this: DivRef) =
   ## walk the DOM; automatically activate scrolling where the style allows it
   ## (ofScroll, the default) and the content overflows the container.
-  ## The root element (parent == nil) never scrolls.
-  let canScroll = rootElem.parent != nil and rootElem.styleCache != nil and
-                  rootElem.style.overflow == ofScroll and
-                  (rootElem.innerW > rootElem.w or rootElem.innerH > rootElem.h)
+  ## the root element scrolls like any other container.
+  let canScroll = this.styleCache != nil and
+                  this.style.overflow == ofScroll and
+                  (this.innerW > this.w or this.innerH > this.h)
   if canScroll:
-    if rootElem.scrollbar == nil:
-      rootElem.scrollbar = newScrollBar(rootElem)
-    rootElem.scrollable = true
-    recalcScrollbar(rootElem.scrollbar)
+    if this.scrollbar == nil:
+      this.scrollbar = newScrollBar(this)
+    this.scrollable = true
+    recalcScrollbar(this.scrollbar)
   else:
-    rootElem.scrollable = false
-    if rootElem.scrollbar != nil:
-      recalcScrollbar(rootElem.scrollbar) # hides (vScroll/hScroll false)
-  for layer in rootElem.layers:
+    this.scrollable = false
+    if this.scrollbar != nil:
+      recalcScrollbar(this.scrollbar) # hides (vScroll/hScroll false)
+  for layer in this.layers:
     for elem in layer.elems:
       recalcScrollbars(elem)
 
@@ -281,12 +299,12 @@ proc recalcScrollbars*(rootElem: DivRef) =
 
 proc drawScrollBar*(sb: ScrollBar, scrollX, scrollY: int) =
   if sb.parent == nil: return
-  if sb.vScroll:
+  if sb.vScroll: # draw vertical scrollbar parts
     if sb.vUp != nil and sb.vUp.draw != nil: sb.vUp.draw(sb.vUp, scrollX, scrollY)
     if sb.vTrack != nil and sb.vTrack.draw != nil: sb.vTrack.draw(sb.vTrack, scrollX, scrollY)
     if sb.vSlider != nil and sb.vSlider.draw != nil: sb.vSlider.draw(sb.vSlider, scrollX, scrollY)
     if sb.vDown != nil and sb.vDown.draw != nil: sb.vDown.draw(sb.vDown, scrollX, scrollY)
-  if sb.hScroll:
+  if sb.hScroll: # draw horizontal scrollbar parts
     if sb.hLeft != nil and sb.hLeft.draw != nil: sb.hLeft.draw(sb.hLeft, scrollX, scrollY)
     if sb.hTrack != nil and sb.hTrack.draw != nil: sb.hTrack.draw(sb.hTrack, scrollX, scrollY)
     if sb.hSlider != nil and sb.hSlider.draw != nil: sb.hSlider.draw(sb.hSlider, scrollX, scrollY)
@@ -295,16 +313,16 @@ proc drawScrollBar*(sb: ScrollBar, scrollX, scrollY: int) =
 proc hitTest*(sb: ScrollBar, x, y: int): DivRef =
   ## topmost visible scrollbar part under (x,y).
   ## x,y are screen coords already adjusted for ancestor scroll.
-  proc inside(e: DivRef): bool =
-    e != nil and e.w > 0 and e.h > 0 and
-      x >= e.x1 and x <= e.x2 and y >= e.y1 and y <= e.y2
+  proc inside(this: DivRef): bool =
+    this != nil and this.w > 0 and this.h > 0 and
+      x >= this.x1 and x <= this.x2 and y >= this.y1 and y <= this.y2
 
-  if sb.vScroll:
+  if sb.vScroll: # test vertical scrollbar parts
     if inside(sb.vUp): return sb.vUp
     if inside(sb.vDown): return sb.vDown
     if inside(sb.vSlider): return sb.vSlider
     if inside(sb.vTrack): return sb.vTrack
-  if sb.hScroll:
+  if sb.hScroll: # test horizontal scrollbar parts
     if inside(sb.hLeft): return sb.hLeft
     if inside(sb.hRight): return sb.hRight
     if inside(sb.hSlider): return sb.hSlider

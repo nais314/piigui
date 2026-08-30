@@ -14,8 +14,8 @@ import parseUtils
 const
   BaselineDPI: cfloat = 96.0  #TODO the "1.0 scale" reference point (same convention as CSS)
 
-  DefaultWindowW* = 640 # Window width
-  DefaultWindowH* = 480 # Window height
+  DefaultWindowW* = 800 # Window width
+  DefaultWindowH* = 600 # Window height
   DefaultWindowFlags*: cuint = sdl.SDL_WINDOW_SHOWN
   DefaultRendererFlags*: cint = sdl.Renderer_Accelerated or sdl.Renderer_PresentVsync or sdl.Renderer_TargetTexture
 

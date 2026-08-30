@@ -210,7 +210,9 @@ proc newSimpleWindow*(
 
 proc newSimpleGui*(
   name: string = "Title",
-  recalcFun: proc(this:DivRef, layer:Layer):tuple[w,h:int] = recalcFlex
+  recalcFun: proc(this:DivRef, layer:Layer):tuple[w,h:int] = recalcFlex,
+  windowW: int = DefaultWindowW,
+  windowH: int = DefaultWindowH
   ): Pgui =
 
     result = new Pgui
@@ -223,8 +225,8 @@ proc newSimpleGui*(
         name,
         sdl.SDL_WINDOWPOS_UNDEFINED,
         sdl.SDL_WINDOWPOS_UNDEFINED,
-        DefaultWindowW,
-        DefaultWindowH,
+        windowW,
+        windowH,
         DefaultWindowFlags,
         defaultSST,
         recalcFun

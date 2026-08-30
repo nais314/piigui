@@ -826,7 +826,7 @@ Yb      Yb   dP 88  .o Y8   8P 88YbdP88 88 Y88
           of muPx:
             elem.w = elem.w_value
             if availW - elem.w < 0:
-              newRow()
+              if not (this.style.overflow == ofScroll): newRow()
 
             lineW += elem.w  
             availW -= elem.w
@@ -845,7 +845,7 @@ Yb      Yb   dP 88  .o Y8   8P 88YbdP88 88 Y88
           of muPc:
             elem.w = (origiW.float / (100.float / elem.w_value.float)).floor.int - 1
             if availW - elem.w <= 0:
-              newRow()
+              if not (this.style.overflow == ofScroll): newRow()
 
             lineW += elem.w
             availW -= elem.w
@@ -1009,7 +1009,7 @@ Yb      Yb   dP 88  .o Y8   8P 88YbdP88 88 Y88
     result.h = totalH
 
   # two-pass scrollbar space reservation
-  if this.parent != nil and this.style.overflow == ofScroll:
+  if this.style.overflow == ofScroll:
     var (tw, th) = layoutPass(baseAvailW, baseAvailH)
     var vS = th > baseAvailH # vertical scrollbar needed?
     var hS = tw > baseAvailW # horizontal scrollbar needed?

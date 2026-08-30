@@ -16,7 +16,8 @@ import
 import piigui
 import piigui/[types,style]
 import piigui/layout/flex
-import piigui/layout/vhbox
+import piigui/layout/recalcH as recalcHMod
+import piigui/layout/recalcV as recalcVMod
 import tables
 
 import os

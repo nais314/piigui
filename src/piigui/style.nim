@@ -7,7 +7,8 @@ import
 
 import piigui/types
 import piigui/layout/flex
-import piigui/layout/vhbox
+import piigui/layout/recalcH as recalcHMod
+import piigui/layout/recalcV as recalcVMod
 import tables
 import locks
 
@@ -53,7 +54,7 @@ defaultSST["rootStyle"] = StyleSheetRef(
   color: sdl.Color((r:255'u8,g:255'u8,b:255'u8,a:255'u8)),
   backGroundColor: sdl.Color((r:46'u8,g:38'u8,b:31'u8,a:255'u8)),
   font:"default",
-  #overFlow: ofHidden,
+  overFlow: ofScroll,
   #position: posAbsolute
   padding: -1
 )

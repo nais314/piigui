@@ -21,8 +21,8 @@ let list = flexColumn(gui.rootElem, 0, "list", "", "100%", "60%")
 list.inlineStyle.overFlow = ofHidden
 ```
 
-The root element (`gui.rootElem`) never scrolls — the window edge is the natural
-viewport, so only its children scroll.
+The root element (`gui.rootElem`) is a normal scrollable container too: if its
+content overflows the window, it gets a scrollbar at the window edge.
 
 Everything else is handled automatically: the layout reports the real content
 size, a `ScrollBar` overlay is built on demand (a track, a slider and four arrow
@@ -65,7 +65,7 @@ size as a `(w, h)` tuple. That tuple is stored on the layer as `layer.w` and
 For every element whose style is `overFlow == ofScroll` (the default) and whose
 content overflows (`innerW > w` or `innerH > h`), it lazily builds the `ScrollBar`
 overlay, sets the derived `scrollable` flag to `true`, and positions the overlay.
-Elements with `overFlow == ofHidden`, and the root element itself, never scroll.
+Elements with `overFlow == ofHidden` never scroll (their overflow is clipped).
 
 Inside a layout procedure, a scrollable container (`overFlow == ofScroll`) lays
 its children out twice. The first pass uses the full available width and height.
@@ -185,7 +185,8 @@ for elem in layer.elems:
 ```
 
 For a scrollable container (`overFlow == ofScroll`), the layout runs twice inside
-`recalcFlex` (or `recalcV` / `recalcH`): once with the full space and once with
+`recalcFlex` (only flex layouts scroll — `recalcV` / `recalcH` are intentionally
+non-scrollable single-line layouts): once with the full space and once with
 the scrollbar space reserved. The final content size is stored on the container
 as `innerW` and `innerH`, and the two-pass also decides whether `vScroll` /
 `hScroll` are needed, which `recalcScrollbar` reads when it positions the
@@ -292,15 +293,17 @@ Event handlers
 - `slider_onDragCancel` — Escape: restore the begin scroll.
 - `scrollPart_onHover` — `hover` pseudo-state for parts that define it.
 
-Layout (`src/piigui/layout/flex.nim`, `src/piigui/layout/vhbox.nim`)
+Layout (`src/piigui/layout/flex.nim`, `src/piigui/layout/recalcH.nim`,
+`src/piigui/layout/recalcV.nim`)
 
 - `recalcFlex(this: DivRef, layer: Layer): tuple[w,h:int]` — flex layout; used
   by `flex`, `flexRow`, `flexColumn` etc.
 - `recalcH` / `recalcV` — horizontal / vertical box layout, used by `row` /
-  `column`.
-- Both set `this.innerW` / `this.innerH` and do the two-pass scrollbar space
-  reservation when `this.parent != nil` and `this.style.overFlow == ofScroll`
-  (the root element and `ofHidden` containers use a single pass).
+  `column`. These are intentionally **single-line and not scrollable**; use
+  `flexRow` / `flexColumn` when scrolling is needed.
+- Only `recalcFlex` sets `this.innerW` / `this.innerH` and does the two-pass
+  scrollbar space reservation when `this.style.overFlow == ofScroll`
+  (`ofHidden` containers use a single pass).
 
 Core (`src/piigui.nim`)
 

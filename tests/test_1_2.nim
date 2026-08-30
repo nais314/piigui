@@ -7,7 +7,8 @@ import
 import piigui
 import piigui/[types,style, simple, hidevents]
 import piigui/layout/flex
-import piigui/layout/vhbox
+import piigui/layout/recalcH as recalcHMod
+import piigui/layout/recalcV as recalcVMod
 
 import piigui/ui/[textbox, label, dosbtn, atogglebtn, gradbtn]
 

@@ -6,7 +6,8 @@ import
 import piigui
 import piigui/[types,style]
 import piigui/layout/flex
-import piigui/layout/vhbox
+import piigui/layout/recalcH as recalcHMod
+import piigui/layout/recalcV as recalcVMod
 import tables
 import unicode
 import locks
@@ -41,7 +42,7 @@ type DosBtn* = ref object of DivRef
 proc default_onBlur*(this:DivRef){.nosinks.}=
   DosBtn(this).state = 0 ]#
 
-proc draw*(self:DivRef, scrollX, scrollY:int) #!FWD
+proc draw*(self:DivRef, scrollXArg, scrollYArg:int) #!FWD
 proc onMouseButtonDown*(this:DivRef){.nosinks.} #!FWD
 proc onMouseButtonUp*(this:DivRef){.nosinks.} #!FWD
 proc dosbtn_onFocus*(this:DivRef){.nosinks.} #!FWD
@@ -128,7 +129,7 @@ proc newDosBtn*(parent: DivRef,
  ]#
 
 
-proc draw*(self:DivRef, scrollX, scrollY:int)=
+proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
   withLock self.lock:
     
     let this = DosBtn(self)
@@ -136,24 +137,8 @@ proc draw*(self:DivRef, scrollX, scrollY:int)=
     const debug = 0
 
     # .............................
-    # clipRect hides overflow
-    var clipRect: sdl.Rect
-    if this.parent == nil:
-      clipRect.x = this.x1.cint
-      clipRect.y = this.y1.cint
-      clipRect.w = this.w.cint
-      clipRect.h = this.h.cint
-    else:
-      var pAccX = scrollX
-      var pAccY = scrollY
-      if this.parent.scrollable:
-        pAccX -= this.parent.scrollX
-        pAccY -= this.parent.scrollY
-      clipRect.x = (this.parent.x1 - pAccX).cint
-      clipRect.y = (this.parent.y1 - pAccY).cint
-      clipRect.w = this.parent.w.cint #(this.x2 - this.x1 + 1)
-      clipRect.h = this.parent.h.cint #(this.y2 - this.y1 + 1)
-    
+    # clipRect hides overflow (intersection of all ancestors' rects)
+    var clipRect = visibleClipRect(this, scrollXArg, scrollYArg)
     discard sdl.setClipRect(this.window.renderer, clipRect.addr)
     # .............................
 
@@ -168,19 +153,21 @@ proc draw*(self:DivRef, scrollX, scrollY:int)=
 
     # .............................
 
-    # the area to paint to on the renderer
-    var thisRect: sdl.Rect
-    thisRect.x = (this.x1 - scrollX).cint
-    thisRect.y = (this.y1 - scrollY).cint
-    thisRect.w = this.w.cint
-    thisRect.h = this.h.cint
+    # The area of this button on the screen,
+    # shifted by the accumulated scroll offsets of its ancestors.
+    # Screen-space destination rectangle for rendering (adjusted for scroll).
+    var screenRect: sdl.Rect
+    screenRect.x = (this.x1 - scrollXArg).cint
+    screenRect.y = (this.y1 - scrollYArg).cint
+    screenRect.w = this.w.cint
+    screenRect.h = this.h.cint
 
     # .............................
     #! we need to redraw, even if not changed
     if this.redrawFlag == 0 and this.textureCache != nil:
         discard this.window.renderer.copy(
             this.textureCache,
-            nil, thisRect.addr)
+            nil, screenRect.addr)
 
 
     else:
@@ -331,7 +318,7 @@ proc draw*(self:DivRef, scrollX, scrollY:int)=
       # copy texture to its place
       discard this.window.renderer.copy(
           this.textureCache,
-          nil, thisRect.addr)
+          nil, screenRect.addr)
       # =====================================        
 
     # ............................................
