@@ -12,7 +12,9 @@ import parseUtils
 
 
 const
-  BaselineDPI: cfloat = 96.0  #TODO the "1.0 scale" reference point (same convention as CSS)
+  BaselineDPI*: cfloat = 96.0  #TODO the "1.0 scale" reference point (same convention as CSS)
+  MaxScale*: float = 8.0
+  MinScale*: float = 0.1
 
   DefaultWindowW* = 800 # Window width
   DefaultWindowH* = 600 # Window height
@@ -52,19 +54,21 @@ type
     #ofY #notimplemented
 
   FlexDirectionKind* = enum
-    fdUndefined,
+    fdUndefined, # ~ fdColumn
     fdRow,
     fdColumn #[ ,
     fdRowReverse,
     fdColumnReverse ]#
   
   FlexJustifyContentKind* = enum
+    ## align content in parent paralell to flow direction
     fjcUndefined,
     fjcStart,
     fjcCenter,
     fjcEnd
 
   FlexAlignContentKind* = enum
+    ## align content in parent perpendicular to flow direction
     facUndefined,
     facStretch,
     facCenter,
@@ -74,6 +78,7 @@ type
     facSpaceAround
 
   FlexAlignItemsKind* = enum
+    ## align elements
     faiUndefined,
     faiStretch,
     faiCenter,
@@ -154,6 +159,8 @@ type
     renderer*: sdl.RendererPtr
     rootElem*:DivRef
     styleSheet*:StyleSheetRef_Tbl # newStyleSheetRef_Tbl*()
+    scale*:float=1.0.float # TODO: implement
+    #ddpi*, hdpi*, vdpi*: cfloat # SDL_WINDOWEVENT_MOVED
 
   #------------------------------------------------------
   Layer* = ref object of RootObj
@@ -169,7 +176,7 @@ type
   DivObj* = object of RootElementObj
     typeName*: string # for type introspection
     w*,h*:int
-    w_value*, h_value*:int # original user numeric value
+    w_value*, h_value*:int # original user numeric value, used by scaling too
     w_unit*, h_unit*: MeasurementUnit # PiXel, PerCent
     innerW*, innerH*:int #* content size for scrollables - set by recalc
     scrollable*: bool #* if true, content may overflow and scroll
@@ -204,6 +211,7 @@ type
 
     isRecalculated*: bool #??? muAuto calculates childs for its own dimensions
 
+    #...............
     onMouseButtonDown*: proc(this:DivRef)
     onMouseButtonUp*: proc(this:DivRef)
 
@@ -218,11 +226,12 @@ type
     onDrop*: proc(this:DivRef)
 
     # generic begin-state for drags (saved once per drag in default_onDragStart)
-    origX1*, origY1*: int
-    dragSaved*: bool
+    origX1*, origY1*: int #TODO: remove. scrollbar needs reviewd. other ui elems dragged on _top_ layer
+    dragSaved*: bool #TODO: remove
 
     onClick*: proc(this:DivRef, e:sdl.Event)
     onTextInput*: proc(this:DivRef, text:string)
+    #...............
 
     textureCache*: sdl.TexturePtr
 
@@ -231,6 +240,13 @@ type
     listeners*: ListenerList
 
     lock*:Lock
+
+  TimedEvent* = object
+    elem*: DivRef
+    intervalMs*: int
+    nextFireNs*: int64
+    repeat*: bool
+    fun*: proc(this: DivRef)
 
 
 
@@ -274,6 +290,7 @@ type
     fonts*:TableRef[string, ttf.FontPtr]
 
     listeners*: ListenerList #* system wide events
+    guiTimedEvents*: seq[TimedEvent]
 
 
   RootElem* = ref object of DivRef
@@ -389,9 +406,10 @@ proc parseSizeStr*(sizeStr:string): tuple[unit:MeasurementUnit,value:int]=
   result.value = value
 
 
-
-#proc recalcFlex*(this: DivRef)#!FWD
-
+proc clampScale*(v: float, lo: float = MinScale, hi: float = MaxScale): float =
+  if v < lo: lo
+  elif v > hi: hi
+  else: v
 
 #[
 
@@ -495,4 +513,3 @@ if no styles:
 
     copy unknown from upper classes
 ]#
-

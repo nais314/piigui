@@ -12,7 +12,7 @@ import
   tables
 
 
-const debug = 0
+const debug = 1
 
 
 ###########################################
@@ -27,9 +27,12 @@ const debug = 0
  ######  ########  ######## 
  ]#
 
+# a default font embedded
 const FontDataResource = staticRead("../assets/agave_regular_mono_nerd.ttf")
 
-proc loadFontDataResource*(ptsize: cint): FontPtr = 
+proc loadFontDataResource*(ptsize: cint): FontPtr =
+  #TODO: load on display change event
+  #TODO: load, but ptsize constrained to display DPI
   # 16pt is a common baseline for UI text at 96 DPI / 1x scaling
   let rw = sdl.rwFromConstMem(FontDataResource.cstring, FontDataResource.len.cint)
   result = ttf.openFontRW(rw, freesrc = 1, ptsize)
@@ -134,7 +137,7 @@ proc newSimpleWindow*(
                 title: cstring,
                 x: cint = sdl.SDL_WINDOWPOS_UNDEFINED,
                 y: cint = sdl.SDL_WINDOWPOS_UNDEFINED,
-                w: cint = 640, h: cint = 480,
+                w: cint = DefaultWindowW, h: cint = DefaultWindowH,
                 flags: cuint = DefaultWindowFlags,
                 styleSheetTbl: StyleSheetRef_Tbl,
                 recalcFun: proc(this:DivRef, layer:Layer):tuple[w,h:int] = recalcFlex
@@ -185,8 +188,9 @@ proc newSimpleWindow*(
   pgui.windows[newWinId] = result
 
   pgui.windows[newWinId].rootElem = newRoot(
-                                      pgui.windows[newWinId],
-                                      recalcFun
+                                      win = pgui.windows[newWinId],
+                                      recalcFun = recalcFun,
+                                      name = "root_" & $newWinId
                                       )
 
   #........................
@@ -220,6 +224,8 @@ proc newSimpleGui*(
     if not simpleSDLInit(result):
       quit("proc newSimpleGui: cannot initialize SDL")
 
+
+
     if newSimpleWindow(
         result,
         name,
@@ -230,12 +236,24 @@ proc newSimpleGui*(
         DefaultWindowFlags,
         defaultSST,
         recalcFun
-        ) == nil: quit("cannot create window", QuitFailure)
+        ) == nil: quit("cannot create window" & $getError(), QuitFailure)
 
-
+    
+    setDPIMultiplier(result.activeWindow)
+    #[ let theNewWindow: PgWindow = result.activeWindow
+    let displayIndex = getDisplayIndex(result.activeWindow.window)
+    if getDisplayDPI(displayIndex, addr theNewWindow.ddpi, addr theNewWindow.hdpi, addr theNewWindow.vdpi) == SdlSuccess:
+      when debug > 0:
+        debugEcho "Diagonal DPI: ", theNewWindow.ddpi
+        debugEcho "Horizontal DPI: ", theNewWindow.hdpi
+        debugEcho "Vertical DPI: ", theNewWindow.vdpi
+      discard
+    else:
+      quit("Failed to get DPI: " & $getError(), QuitFailure) ]#
 
 
 proc closeGui*(pgui: Pgui) =
+  pgui.guiTimedEvents.setLen(0)
   pgui.renderer.destroyRenderer()
   pgui.window.destroyWindow()
   ttf.ttfQuit()

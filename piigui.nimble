@@ -3,7 +3,7 @@
 version       = "0.1.20260820"
 author        = "Istvaan Nagy"
 description   = "piis sdl2 gui"
-license       = "GPL-2.0"
+license       = "MPL-2.0"
 srcDir        = "src"
 
 

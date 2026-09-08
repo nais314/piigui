@@ -63,7 +63,7 @@ proc newDosBtn*(parent: DivRef,
              #:::::::::::::
              text = "",
              state = 0,
-             shadowSizePx: int = 6
+             shadowSizePx: int = 0
              ): DosBtn =
 
   result = new DosBtn
@@ -199,6 +199,8 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
 
       #! CUSTOM FUN HERE:
 
+      if this.shadowSizePx == 0:
+        this.shadowSizePx = min((min(this.w, this.h) div 5), 12)
 
       # draw the elem:::::::
       var
@@ -219,7 +221,7 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
           echo "paintRect.w ", paintRect.w
           echo "paintRect.h ", paintRect.h
           
-        this.window.renderer.setDrawColor( sdl.Color((r:0'u8,g:0'u8,b:0'u8,a:70'u8)) )
+        this.window.renderer.setDrawColor( sdl.Color((r:0'u8,g:0'u8,b:0'u8,a:160'u8)) )
         discard this.window.renderer.fillRect(addr(paintRect))
 
         # btn face:::::
@@ -236,7 +238,8 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
         if this.text.len > 0:
           var surface = this.pgui.fonts["default"].renderUtf8Shaded(
                       this.text,
-                      this.styleCache[this.activeStyle].color,
+                      #this.styleCache[this.activeStyle].color,
+                      buttonTextColor(this.styleCache[this.activeStyle].backGroundColor),
                       this.styleCache[this.activeStyle].backGroundColor)
 
           var texture = sdl.createTextureFromSurface(this.window.renderer, surface)

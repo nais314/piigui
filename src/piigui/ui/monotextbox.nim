@@ -14,9 +14,16 @@ import locks
 
 #import random
 
-type TextBox* = ref object of DivRef
-  val*: string
+type MonoTextBox* = ref object of DivRef
+  val*: string # text is val here
   cursorPos*: int
+  selectionStart*: int # if == cursorPos: no selection
+  scrollOffset*: int # which part `val` is seen ?
+
+  # monospace font handling
+  charWidth*: int
+  charHeight*: int
+  padding*: int  
 
 #----------------------------------------------------
 #[ 
@@ -30,31 +37,13 @@ type TextBox* = ref object of DivRef
  ]#
 
 
-proc default_onFocus*(this:DivRef){.nosinks.}=
-  piigui.default_onFocus(this)
-  sdl.startTextInput()
-
-proc default_onBlur*(this:DivRef){.nosinks.}=
-  sdl.stopTextInput()
-
-proc default_onTextInput*(this: DivRef, val:string){.nosinks.}=
-      #[ this.val &= val
-      this.cursorPos += 1 # = val.runeLen.uint
-      this.redrawFlag = 1 ]#
-      let self = TextBox(this)
-      if self.cursorPos == 0:
-        self.val = val & self.val
-      elif self.cursorPos == self.val.runeLen:
-        self.val &= val
-      else:
-        self.val = self.val.runeSubStr(0, self.cursorPos ) &
-                    val &
-                    self.val.runeSubStr(self.cursorPos)
-      self.cursorPos += val.runeLen
-      self.redrawFlag = 1
-
+proc default_onFocus*(this:DivRef){.nosinks.} #!FWD
+proc default_onBlur*(this:DivRef){.nosinks.} #!FWD
+proc default_onTextInput*(this: DivRef, val:string){.nosinks.} #!FWD
 
 proc draw*(self:DivRef, scrollXArg, scrollYArg:int) #!FWD
+
+
 
 proc newTextBox*(parent: DivRef,
              layer:int = 0,
@@ -145,6 +134,31 @@ proc value*(this: TextBox):string= this.val
 
 
 #----------------------------------------------------
+
+
+proc default_onFocus*(this:DivRef){.nosinks.}=
+  piigui.default_onFocus(this)
+  sdl.startTextInput()
+
+proc default_onBlur*(this:DivRef){.nosinks.}=
+  sdl.stopTextInput()
+
+proc default_onTextInput*(this: DivRef, val:string){.nosinks.}=
+      #[ this.val &= val
+      this.cursorPos += 1 # = val.runeLen.uint
+      this.redrawFlag = 1 ]#
+      let self = TextBox(this)
+      if self.cursorPos == 0:
+        self.val = val & self.val
+      elif self.cursorPos == self.val.runeLen:
+        self.val &= val
+      else:
+        self.val = self.val.runeSubStr(0, self.cursorPos ) &
+                    val &
+                    self.val.runeSubStr(self.cursorPos)
+      self.cursorPos += val.runeLen
+      self.redrawFlag = 1
+
 
 
 
@@ -326,5 +340,9 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
 
 #........................................................
 
+#[ 
+Textbox
+onclick:
 
+ ]#
 

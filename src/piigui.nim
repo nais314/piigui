@@ -8,6 +8,7 @@ import
 
 import tables
 import os
+import std/monotimes
 #import times
 import random
 import locks
@@ -48,6 +49,21 @@ converter BoolToSDL_Return*(x: bool): SDL_Return =
     result = SdlError
 ###########################################
 
+
+proc setDPIMultiplier*(window:PgWindow) =
+  let displayIndex = getDisplayIndex(window.window)
+  var ddpi, hdpi, vdpi: cfloat
+  if getDisplayDPI(displayIndex, addr ddpi, addr hdpi, addr vdpi) == true:
+    if ddpi == BaselineDPI:
+      window.scale = 1.0
+    else:
+      window.scale = (ddpi / BaselineDPI).float
+  else:
+    when debug > 0: debugEcho "Failed to get DPI, defaulting to 1.0: ", getError()
+    window.scale = 1.0
+
+
+###########################################
 
 var GlobalIDCounter: uint = 0
 type IDCounterOverflowError* = object of ValueError
@@ -286,6 +302,17 @@ proc visibleClipRect*(this: DivRef, scrollX, scrollY: int): sdl.Rect =
     maxX = min(maxX, ancestor.x2 - accX)
     maxY = min(maxY, ancestor.y2 - accY)
     ancestor = ancestor.parent
+    ##[ 
+    The reason it's specifically accX -= scrollX (subtracting)
+    rather than accX += scrollX comes down to what scroll does geometrically:
+
+    When a container is scrolled right by scrollX, 
+    its content appears shifted left on screen 
+    relative to the container's own box.
+    Equivalently, to convert a child's document-space coordinate 
+    into the container's on-screen coordinate space, 
+    you subtract the scroll: screenX = docX - scrollX. 
+    ]##
 
   if minX > maxX or minY > maxY: # empty intersection: nothing visible
     return (x: 0.cint, y: 0.cint, w: 0.cint, h: 0.cint)
@@ -502,7 +529,8 @@ proc newDiv*(parent: DivRef,
   result.styleCache = newTable[string, StyleSheetRef](4)
   
   for style in styles:
-    result.styles.add((style, defaultSST[style]))
+    if defaultSST.contains(style):
+      result.styles.add((style, defaultSST[style]))
 
   result.activeStyle = "default"
   recalcStyle(result) #* the default RootStyle applied here
@@ -660,6 +688,7 @@ template hBox*(args: varargs[untyped]): untyped =
 
 proc newRoot*(
     win:PgWindow,
+    name:string="",
     recalcFun: proc(this:DivRef, layer:Layer):tuple[w,h:int] = recalcFlex,
     styles:openArray[string] = ["rootStyle"]
     ): RootElem =
@@ -668,6 +697,7 @@ proc newRoot*(
   ## wich are using parents dimensions.
   ## window events should take care!
   result = new RootElem
+  result.typeName = "root"
 
   initLock(result.lock)
 
@@ -678,8 +708,9 @@ proc newRoot*(
   result.layers = @[]
   result.layer = -1 # -1 marks the root: it has no parent
   discard result.newLayer(recalcFun)
-  result.name = "root"
+  
   result.iD = getNextGlobalID()
+  if name == "": result.name = "root_" & $result.iD
 
   result.w_unit = muPx
   result.h_unit = muPx
@@ -837,6 +868,19 @@ proc recalcDOM*(rootElem: DivRef)=
 
 template recalcDOM*(win:PgWindow)=
   recalcDOM(win.rootElem)
+
+#TODO: template recalcDOM*(pgui:Pgui)=
+#..................................
+
+proc onScaleDown*(this: DivRef)=
+  ## for manual scaling of gui
+  this.window.scale = clampScale(this.window.scale - 0.1)
+  
+proc onScaleUp*(this: DivRef)=
+  ## for manual scaling of gui  
+  this.window.scale = clampScale(this.window.scale + 0.1)
+
+
 ###########################################
 
 #[ 
@@ -964,6 +1008,91 @@ proc trigger*(pgui:Pgui, evtname:string ):bool{.discardable.}=
         pgui.listeners[i].actions[j](nil) #! nil means no DivRef, not gui elem
       result = true
 #..............
+
+
+proc addTimedEvent*(pgui: Pgui,
+                    elem: DivRef,
+                    intervalMs: int,
+                    fun: proc(this: DivRef),
+                    repeat: bool = true) =
+  ## Registers a main-thread callback for an element.
+  if pgui == nil or elem == nil or fun == nil:
+    return
+  if intervalMs <= 0:
+    raise newException(ValueError, "Timed event interval must be positive")
+
+  let intervalNs = intervalMs.int64 * 1_000_000'i64
+  pgui.guiTimedEvents.add(TimedEvent(
+    elem: elem,
+    intervalMs: intervalMs,
+    nextFireNs: getMonoTime().ticks + intervalNs,
+    repeat: repeat,
+    fun: fun))
+
+
+proc removeTimedEvent*(pgui: Pgui,
+                       elem: DivRef,
+                       fun: proc(this: DivRef)) =
+  if pgui == nil:
+    return
+  var i = pgui.guiTimedEvents.high
+  while i >= 0:
+    let event = pgui.guiTimedEvents[i]
+    if event.elem == elem and event.fun == fun:
+      pgui.guiTimedEvents.delete(i)
+    dec i
+
+
+proc clearTimedEvents*(pgui: Pgui, elem: DivRef) =
+  if pgui == nil:
+    return
+  var i = pgui.guiTimedEvents.high
+  while i >= 0:
+    if pgui.guiTimedEvents[i].elem == elem:
+      pgui.guiTimedEvents.delete(i)
+    dec i
+
+
+proc clearTimedEventsRecursive(pgui: Pgui, elem: DivRef) =
+  ## used by proc removeElem
+  if elem == nil:
+    return
+  clearTimedEvents(pgui, elem)
+  for layer in elem.layers:
+    for child in layer.elems:
+      clearTimedEventsRecursive(pgui, child)
+
+
+proc runTimedEvents*(pgui: Pgui) =
+  ## Runs due callbacks on the thread that owns the GUI.
+  if pgui == nil:
+    return
+
+  let nowNs = getMonoTime().ticks
+  var i = 0
+  while i < pgui.guiTimedEvents.len:
+    let event = pgui.guiTimedEvents[i]
+    if nowNs < event.nextFireNs:
+      inc i
+      continue
+
+    if event.repeat:
+      # Schedule from now so a slow frame does not cause callback bursts.
+      pgui.guiTimedEvents[i].nextFireNs = nowNs + event.intervalMs.int64 * 1_000_000'i64
+    else:
+      pgui.guiTimedEvents.delete(i)
+
+    event.fun(event.elem)
+
+    # A callback may remove or replace its own event.
+    if event.repeat and i < pgui.guiTimedEvents.len and
+       pgui.guiTimedEvents[i].elem == event.elem and
+       pgui.guiTimedEvents[i].fun == event.fun:
+      inc i
+
+#..............
+
+
 proc changeWindowRecursive(this:DivRef, win:PgWindow)=
   ## helper for copyElem
   ## changes the window prop for all children
@@ -995,6 +1124,7 @@ proc removeElem*(layer: Layer, elem: DivRef)=
 proc removeElem*(elem: DivRef)=
   ## removes elem from its parent's layer using the stored layer index
   if elem.parent == nil: return
+  clearTimedEventsRecursive(elem.pgui, elem)
   let l = elem.layer
   if l < 0 or l > elem.parent.layers.high: return
   removeElem(elem.parent.layers[l], elem)

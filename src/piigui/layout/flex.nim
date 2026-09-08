@@ -876,7 +876,7 @@ Yb      Yb   dP 88  .o Y8   8P 88YbdP88 88 Y88
 
       if line.len > 0: postProcessRow() # post process last row
 
-      if totalH < origiH: distributeContent() # TODO: scroll
+      if totalH < origiH or totalW < origiW: distributeContent() # TODO: scroll
 
       #TODO SCROLL
 
@@ -889,7 +889,8 @@ Yb      Yb   dP 88  .o Y8   8P 88YbdP88 88 Y88
 
     ]#
     #!................................
-    elif this.style.flexDirection == fdColumn:#!---- fdColumn
+    elif this.style.flexDirection == fdColumn or  #!---- fdColumn
+         this.style.flexDirection == fdUndefined:
       ## calculate childs position Vertically
 
       when debug > 0: echo " START FDCOLUMN ", this.name

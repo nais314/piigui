@@ -6,6 +6,7 @@ htmldocs/
 *.out
 *.o
 bin/
+nimble.paths
 
 # Nimble
 nimbledeps/

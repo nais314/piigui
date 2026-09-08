@@ -62,3 +62,4 @@ Nim SDL2 GUI toolkit ("piigui"), GPL-2.0, single author (Istvan Nagy). Some comm
 - `assets/` fonts and other bundled files
 - `ui_templates` example gui snippets library (TODO)
 - `src/piigui/ai` http api tool server, connect to opencode or open-webui via tool call (TODO)
+- `doc/` documentation in markdown format (may contain memos and snippets in text .txt file format)

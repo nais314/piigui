@@ -20,7 +20,7 @@ import std/monotimes
 ###########################################
 # 800x600 window.
 
-var gui = newSimpleGui("recalcH test", windowW = 800, windowH = 600)
+var gui = newSimpleGui("recalcV test", windowW = 800, windowH = 600)
 
 gui.rootElem.setPadding(10)
 gui.rootElem.setBackGroundColor(0x404040FF.HexColor)
@@ -59,52 +59,47 @@ proc addRandomWidget(parent: DivRef, baseName: string, idx: int,
       result = l
 
 ###########################################
-# 1) three recalcH rows directly on the root.
-#    their children must stay within availW (780px),
-#    so nothing overflows and no scrollbar appears.
-const availW = 780
+# a row with two columns:
+#   col1 - a plain column() (recalcV). Content fits -> no scrollbar.
+#   col2 - a flexColumn. Content overflows -> vertical scrollbar.
+# (a plain column() cannot scroll: recalcV does not report innerW/innerH,
+#  so the scrolling column has to be a flexColumn.)
+
+let outerRow = row(gui.rootElem, 0, "outerRow", "", "100%", "55%")
+outerRow.setPadding(4)
 
 var quitCandidate: DosBtn = nil
-for i in 0 ..< 3:
-  let r = row(gui.rootElem, 0, "row" & $i, "", "auto", "70px")
-  r.setPadding(4)
-
-  var used = 0
-  var idx = 0
-  while idx < 6:
-    let w = 60 + rand(81) # 60..140
-    if used + w > availW - 40: break # keep the row within availW
-    used += w
-    let wd = addRandomWidget(r, r.name, idx, 60, 140, 40, 70)
-    if wd of DosBtn and quitCandidate == nil:
-      quitCandidate = DosBtn(wd)
-    inc idx
-  echo r.name, ": children ", idx, ", summed width ~", used, "px (availW ", availW, ")"
 
 ###########################################
-# 2) table1 (flexColumn, ofScroll is the default),
-#    filled with recalcH rows that are wider than the
-#    container -> horizontal scrollbar is created.
-let table1 = flexColumn(gui.rootElem, 0, "table1", "", "90%", "58%", ["lightgray"])
-table1.setPadding(4)
+# col1 (recalcV): 6 children, 40..45px high each.
+#   max 270px of content vs ~300px column content area -> fits.
+let col1 = column(outerRow, 0, "col1", "", "49%", "auto")
+col1.setPadding(4)
+col1.setBackGroundColor(0x505050FF.HexColor)
 
-let nRows = 5 + rand(3) # 5..7 rows
-for i in 0 ..< nRows:
-  let rowW = 800 + rand(401) # 800..1200 px
-  let r = row(table1, 0, "trow" & $i, "", $rowW & "px", "40px")
-  r.setPadding(2)
+var col1ContentH = 0
+for i in 0 ..< 6:
+  let wd = addRandomWidget(col1, col1.name, i, 60, 180, 40, 45)
+  col1ContentH += wd.h_value
+  if wd of DosBtn and quitCandidate == nil:
+    quitCandidate = DosBtn(wd)
+echo col1.name, ": children 6, summed height ~", col1ContentH,
+     "px (column content area ~300px)"
 
-  var used = 0
-  var idx = 0
-  while idx < 12:
-    let w = 60 + rand(121) # 60..180
-    if used + w > rowW - 20: break
-    used += w
-    let wd = addRandomWidget(r, r.name, idx, 60, 180, 24, 40)
-    if wd of DosBtn and quitCandidate == nil:
-      quitCandidate = DosBtn(wd)
-    inc idx
-  echo r.name, ": row width ", rowW, "px, children ", idx, ", summed width ~", used
+###########################################
+# col2 (flexColumn): 14 children, 40..45px high each.
+#   min 560px of content vs ~300px column content area -> overflows.
+let col2 = flexColumn(outerRow, 0, "col2", "", "49%", "auto", ["lightgray"])
+col2.setPadding(4)
+
+var col2ContentH = 0
+for i in 0 ..< 14:
+  let wd = addRandomWidget(col2, col2.name, i, 60, 180, 40, 45)
+  col2ContentH += wd.h_value
+  if wd of DosBtn and quitCandidate == nil:
+    quitCandidate = DosBtn(wd)
+echo col2.name, ": children 14, summed height ~", col2ContentH,
+     "px (column content area ~300px)"
 
 if quitCandidate != nil:
   proc quitOnClick(this: DivRef) =
@@ -122,12 +117,15 @@ gui.rootElem.recalcStyle(true)
 gui.rootElem.recalcDOM()
 
 echo " ++++++ RECALCED +++++++"
-echo "root  innerW/innerH: ", gui.rootElem.innerW, "/", gui.rootElem.innerH,
+echo "root    innerW/innerH: ", gui.rootElem.innerW, "/", gui.rootElem.innerH,
      " scrollable=", gui.rootElem.scrollable
-echo "table1 innerW: ", table1.innerW, " vs w: ", table1.w,
-     " innerH: ", table1.innerH, " vs h: ", table1.h,
-     " scrollable=", table1.scrollable,
-     " hscroll=", (table1.scrollbar != nil and table1.scrollbar.hScroll)
+echo "outerRow innerW/innerH: ", outerRow.innerW, "/", outerRow.innerH,
+     " scrollable=", outerRow.scrollable
+echo "col1    content ~", col1ContentH, "px, h: ", col1.h,
+     " scrollable=", col1.scrollable
+echo "col2    innerH: ", col2.innerH, " vs h: ", col2.h,
+     " scrollable=", col2.scrollable,
+     " vscroll=", (col2.scrollbar != nil and col2.scrollbar.vScroll)
 
 var done: bool = false
 while not done:

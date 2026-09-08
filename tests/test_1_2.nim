@@ -10,7 +10,7 @@ import piigui/layout/flex
 import piigui/layout/recalcH as recalcHMod
 import piigui/layout/recalcV as recalcVMod
 
-import piigui/ui/[textbox, label, dosbtn, atogglebtn, gradbtn]
+import piigui/ui/[label, dosbtn, atogglebtn, gradbtn]
 
 
 ###########################################
@@ -75,14 +75,17 @@ let footer = flexRow(
   )
 footer.setPadding(2)
 
-let leftFooter = footer.flexRow(name="leftFooter", width="50%")
+#[ let leftFooter = footer.flexRow(name="leftFooter", width="50%")
 let rightFooter = footer.flexRow(name="rightFooter")
+ ]#
+let leftFooter = footer.flexRow(name = "leftFooter", width = "50%")
+let rightFooter = footer.flexRow(name = "rightFooter", width = "50%")
 
 leftFooter.inlineStyle.justifyContent = fjcStart
 rightFooter.inlineStyle.justifyContent = fjcEnd
 
-discard leftFooter.newDosBtn(group="footBtn", width="25%", height="100%", text="nothing",shadowSizePx=3)
-let quitBtn = rightFooter.newDosBtn(group="footBtn", width="25%", text="quit",shadowSizePx=3)
+discard leftFooter.newDosBtn(group="footBtn", width="25%", height="100%", text="nothing",shadowSizePx=0)
+let quitBtn = rightFooter.newDosBtn(group="footBtn", width="25%", text="quit",shadowSizePx=0)
 
 proc quitBtnonClick(this:DivRef)=
   var sdlevent: sdl.Event
@@ -162,6 +165,16 @@ let label1 = tabContent2.newLabel(
 label1.value = "GOMBAAAAAAA"
 defaultSST["Label1"]= newStyleSheet()
 defaultSST["Label1"].color = (r:230, g:230, b:0, a:255)
+defaultSST["Label1"].addNewPseudoStyle("blink")
+defaultSST["Label1"].pseudoStyles["blink"].color = (r:0, g:0, b:0, a:255)
+
+proc blink(this: DivRef) =
+  if this.activeStyle == "default":
+    this.setActiveStyle("blink")
+  else:
+    this.setDefaultStyle()
+
+gui.addTimedEvent(label1, 500, blink)
 
 #................
 
@@ -203,6 +216,9 @@ echo leftFooter.w
 echo leftFooter.h
 echo leftFooter.x1
 echo leftFooter.y1
+echo "rightFooter justify: ", rightFooter.style.justifyContent
+echo "rightFooter x/w: ", rightFooter.x1, " / ", rightFooter.w
+echo "quitBtn x/w: ", quitBtn.x1, " / ", quitBtn.w
 
 import std.monotimes
 
@@ -210,7 +226,8 @@ var done:bool=false
 while not done:
   let smtick = getMonoTime()
 
-  done = hid_events(gui)
+  done = gui.hid_events()
+  gui.runTimedEvents()
 
   gui.drawDom(gui.rootElem)
   gui.renderer.present()
@@ -220,6 +237,6 @@ while not done:
   #echo st 
   st = st div 1_000_000
   #echo st 
-  sleep(16 - st.int)
+  sleep(max(0, 16 - st.int))
 
 closeGui(gui)

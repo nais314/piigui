@@ -198,15 +198,6 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
       #.............................
 
 
-      # get font heigth
-      var fh = this.pgui.fonts[
-                  this.styleCache[this.activeStyle].font
-                  ].fontHeight() + 2
-
-      if canvasRect.h > fh:
-        canvasRect.y = (canvasRect.h - fh) div 2
-        canvasRect.h = fh
-
       #[ # draw the background
       if this.styleCache[this.activeStyle].backGroundColor != EmptyColor:
         this.pgui.renderer.setDrawColor(
@@ -223,41 +214,36 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
 
       #=====================================
       if this.val.len > 0:
-        this.pgui.renderer.setDrawColor(
-            this.styleCache[this.activeStyle].backGroundColor)
         # render text --- render text --- render text ---
         var
-          fontColor = this.styleCache[this.activeStyle].color #sdl.Color((r:0'u8,g:0'u8,b:0'u8,a:255'u8))
-          #fontBgColor = sdl.Color((r:0'u8,g:0'u8,b:0'u8,a:0'u8))
+          fontColor = this.styleCache[this.activeStyle].color
           fontBgColor = this.styleCache[this.activeStyle].backGroundColor
-
-        #var surface = this.pgui.font_normal.renderUTF8_Solid(this.name, fontColor)
-
-        #[ discard this.pgui.renderer.getRenderDrawColor(
-                      fontBgColor.r.addr,
-                      fontBgColor.g.addr,
-                      fontBgColor.b.addr,
-                      fontBgColor.a.addr) ]#
 
         var surface = this.pgui.fonts["default"].renderUtf8Shaded(
                       this.val,
                       fontColor,
                       fontBgColor)
-        #discard surface.setColorKey(1,0)
-
-        var srect : sdl.Rect = (
-                            x: canvasRect.x + 1,
-                            y: canvasRect.y + 1,
-                            w: surface.w,
-                            h: surface.h)
 
         var texture = sdl.createTextureFromSurface(this.pgui.renderer, surface)
 
+        # get font height
+        var fontHeight = this.pgui.fonts[
+                    this.styleCache[this.activeStyle].font
+                    ].fontHeight() + 2
+
+        # center the text vertically and horizontally
+        if canvasRect.h > fontHeight:
+          canvasRect.y = (canvasRect.h - fontHeight) div 2
+          canvasRect.h = fontHeight
+        if canvasRect.w > surface.w:
+          canvasRect.x = (canvasRect.w - surface.w) div 2
+          canvasRect.w = surface.w
+
         discard this.pgui.renderer.copy(texture,
-            nil, srect.addr)
+            nil, canvasRect.addr)
 
         sdl.freeSurface(surface)
-        destroyTexture(texture) #?
+        destroyTexture(texture)
 
 
       #=====================================

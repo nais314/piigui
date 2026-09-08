@@ -12,7 +12,9 @@ track to page-scroll, or by dragging the slider.
 When the content fits, no scrollbar is shown and nothing changes: the container
 behaves exactly like a normal one.
 
-You normally do not configure anything. If you want a container to *not* scroll
+You normally do not configure anything.
+
+If you want a container to *not* scroll
 and instead clip away the parts that overflow, set its `overFlow` property to
 `ofHidden`, for example:
 

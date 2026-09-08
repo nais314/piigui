@@ -237,6 +237,7 @@ proc hid_events*(pgui:Pgui): bool = # exit pgui on true
             discard
 
           of WINDOWEVENT_MOVED:
+            #TODO: recalc scale and recalc DOM
             when debug > 0:
               echo "WINDOWEVENT_MOVED ", eventObj.windowId, "\n",
                 eventObj.data1, "\n",

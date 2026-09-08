@@ -196,7 +196,8 @@ var done: bool = false
 while not done:
   let smtick = getMonoTime()
 
-  done = hid_events(gui)
+  done = gui.hid_events()
+  gui.runTimedEvents()
 
   gui.drawDom(gui.rootElem)
   gui.renderer.present()
@@ -204,6 +205,6 @@ while not done:
   let emtick = getMonoTime()
   var st = emtick.ticks - smtick.ticks
   st = st div 1_000_000
-  sleep(16 - st.int)
+  sleep(max(0, 16 - st.int))
 
 closeGui(gui)

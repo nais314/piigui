@@ -29,13 +29,21 @@ import locks
 ##        ######   ######     ##    
 ]#
 
+
+
+
 #[ proc newColor*(r, g, b, a: uint8): SdlColorRef =
   new(result)
   result[] = (r: r, g: g, b: b, a: a)
 
 let opaqueWhiteColor* = newColor(r = 255'u8, g = 255'u8, b = 255'u8, a = 255'u8) ]#
 
+proc rgbaColor*(r:int, g:int, b:int, a:int): sdl.Color=
+  return sdl.Color((r.uint8, g.uint8, b.uint8, a.uint8))
+
 let clearColor* = sdl.Color((r:50'u8,g:50'u8,b:50'u8,a:0'u8))
+let btnColor* = rgbaColor(r=0,g=0,b=0,a=255)
+let bgColor* = rgbaColor(r=200,g=200,b=184,a=255)
 
 var fontTable* = newTable[string, ttf.FontPtr](8)
 
@@ -44,15 +52,15 @@ var defaultSST* = newStyleSheetRef_Tbl()
 defaultSST["rootStyle"] = StyleSheetRef(
   ## default style for every elem, see recalc
   flexGrow: 0,
-  flexGrowFrom: 0,
+  flexGrowFrom: 75,
   flexDirection: fdColumn,
   #flexWrap: false,
   justifyContent: fjcCenter,
   alignContent: facStart,
   alignItems: faiCenter,
   spacing: -1,
-  color: sdl.Color((r:255'u8,g:255'u8,b:255'u8,a:255'u8)),
-  backGroundColor: sdl.Color((r:46'u8,g:38'u8,b:31'u8,a:255'u8)),
+  color: btnColor, #sdl.Color((r:255'u8,g:255'u8,b:255'u8,a:255'u8)),
+  backGroundColor: bgColor, #sdl.Color((r:200'u8,g:186'u8,b:163'u8,a:255'u8)),
   font:"default",
   overFlow: ofScroll,
   #position: posAbsolute
@@ -68,8 +76,8 @@ defaultSST["row"] = StyleSheetRef(
   alignContent: facCenter,
   alignItems: faiCenter,
   spacing: -1,
-  color: clearColor,
-  backGroundColor: EmptyColor,
+  #color: clearColor,
+  #backGroundColor: EmptyColor,
   padding: -1
 )
 
@@ -82,8 +90,8 @@ defaultSST["column"] = StyleSheetRef(
   alignContent: facCenter,#facSpaceAround,
   alignItems: faiCenter,
   spacing: -1,
-  color: sdl.Color((r:255'u8,g:255'u8,b:255'u8,a:255'u8)),
-  backGroundColor: sdl.Color((r:46'u8,g:38'u8,b:31'u8,a:255'u8)),
+  #color: sdl.Color((r:255'u8,g:255'u8,b:255'u8,a:255'u8)),
+  #backGroundColor: sdl.Color((r:46'u8,g:38'u8,b:31'u8,a:255'u8)),
   padding: -1
 )
 
@@ -563,13 +571,13 @@ proc toRGBA*(col:sdl.Color):uint32=
   result = result shl 8
   result = result or col.a
 
-#[ proc lighten*(col:sdl.Color, val:uint8 = 25):sdl.Color=
+proc lighten*(col:sdl.Color, val:uint8 = 50):sdl.Color=
   result.r = if (255 - col.r) < val: 255 else: col.r + val
   result.g = if (255 - col.g) < val: 255 else: col.g + val
   result.b = if (255 - col.b) < val: 255 else: col.b + val
-  result.a = col.a ]#
+  result.a = col.a
 
-proc darken*(col:sdl.Color, val:uint8 = 25):sdl.Color=
+proc darken*(col:sdl.Color, val:uint8 = 50):sdl.Color=
   result.r = if col.r < val: 0 else: col.r - val
   result.g = if col.g < val: 0 else: col.g - val
   result.b = if col.b < val: 0 else: col.b - val
