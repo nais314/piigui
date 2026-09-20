@@ -74,6 +74,7 @@ proc recalcH*(this:DivRef, layer:Layer):tuple[w,h:int]=
         countAutoWidthElems += 1
       of muPx:
         elem.w = elem.w_value
+        if elem.window.scale != 1.0: elem.w = (elem.w.float * elem.window.scale).int
         availW -= elem.w
         #countAutoWidthElems += 1
       of muPc:
@@ -87,6 +88,7 @@ proc recalcH*(this:DivRef, layer:Layer):tuple[w,h:int]=
         elem.h = thisH
       of muPx:
         elem.h = elem.h_value
+        if elem.window.scale != 1.0: elem.h = (elem.h.float * elem.window.scale).int
       of muPc:
         elem.h = (thisH.float * elem.h_value.float / 100.0).int
 
@@ -161,6 +163,7 @@ proc recalcH*(this:DivRef, layer:Layer):tuple[w,h:int]=
 
 
   for elem in layer.elems:
+    elem.redrawFlag = 1
     for elemLayer in elem.layers:
       if elemLayer.recalc != nil:
         (elemLayer.w, elemLayer.h) = elemLayer.recalc(elem, elemLayer)

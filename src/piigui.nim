@@ -51,9 +51,9 @@ converter BoolToSDL_Return*(x: bool): SDL_Return =
 
 
 proc setDPIMultiplier*(window:PgWindow) =
-  let displayIndex = getDisplayIndex(window.window)
+  let displayIndex = sdl.getDisplayIndex(window.window)
   var ddpi, hdpi, vdpi: cfloat
-  if getDisplayDPI(displayIndex, addr ddpi, addr hdpi, addr vdpi) == true:
+  if sdl.getDisplayDPI(displayIndex, addr ddpi, addr hdpi, addr vdpi) == true:
     if ddpi == BaselineDPI:
       window.scale = 1.0
     else:
@@ -336,12 +336,13 @@ proc drawDivRef*(this:DivRef, scrollX, scrollY:int)=
       echo "___________"
 
   #.............................
-  # clipRect hide overflow:
+  # clipRect (screen coordinates) hides overflow:
   # the intersection of all ancestors' on-screen rects, so content
   # stays clipped inside every scrollable ancestor, not just the parent.
   # (scrollX/Y = this element's accumulated ancestor scroll)
+  # It must clip ONLY the final on-screen copy, not the texture-local
+  # rendering below.
   var clipRect = visibleClipRect(this, scrollX, scrollY)
-  discard sdl.setClipRect(this.pgui.renderer, clipRect.addr)
   #.............................
 
   # backgroundRect is the rect we can paint
@@ -366,6 +367,7 @@ proc drawDivRef*(this:DivRef, scrollX, scrollY:int)=
   #.............................
   # we need to redraw, even if not changed
   if this.redrawFlag == 0 and this.textureCache != nil:
+      discard sdl.setClipRect(this.pgui.renderer, clipRect.addr)
       discard this.pgui.renderer.copy(
           this.textureCache,
           nil, thisRect.addr)
@@ -374,14 +376,15 @@ proc drawDivRef*(this:DivRef, scrollX, scrollY:int)=
   else:
     # if need to redraw, check if cache setted up
     # todo setup cache at recalc
-    if this.textureCache == nil:
-      this.textureCache = sdl.createTexture(
-        this.pgui.renderer,
-        sdl.SDL_PIXELFORMAT_UNKNOWN,#PIXELFORMAT_RGBA8888,
-        sdl.SDL_TEXTUREACCESS_TARGET,
-        this.w.cint, this.h.cint)
-        
-      discard this.textureCache.setTextureBlendMode(sdl.BLENDMODE_BLEND)
+    if this.textureCache != nil:
+      sdl.destroyTexture(this.textureCache)
+    this.textureCache = sdl.createTexture(
+      this.pgui.renderer,
+      sdl.SDL_PIXELFORMAT_UNKNOWN,#PIXELFORMAT_RGBA8888,
+      sdl.SDL_TEXTUREACCESS_TARGET,
+      this.w.cint, this.h.cint)
+      
+    discard this.textureCache.setTextureBlendMode(sdl.BLENDMODE_BLEND)
 
     # the elems. texture is the render target x=0 y=0!
     discard sdl.setRenderTarget(this.pgui.renderer, this.textureCache)
@@ -442,6 +445,8 @@ proc drawDivRef*(this:DivRef, scrollX, scrollY:int)=
 
     #=====================================
     discard sdl.setRenderTarget(this.pgui.renderer, nil)
+    # clip only the screen-space copy
+    discard sdl.setClipRect(this.pgui.renderer, clipRect.addr)
     discard this.pgui.renderer.copy(
         this.textureCache,
         nil, thisRect.addr)
@@ -859,6 +864,13 @@ proc drawDOM*(pgui:Pgui, r:DivRef)=
 #..................................
 
 proc recalcDOM*(rootElem: DivRef)=
+  #[ if rootElem.parent == nil:
+    var cw,ch:cint
+    sdl.getSize(rootElem.window.window, cw, ch)
+    rootElem.w_value = cw
+    rootElem.h_value = ch
+    rootElem.w = cw
+    rootElem.h = ch ]#
   for layer in rootElem.layers:
     if layer.recalc != nil:
       (layer.w, layer.h) = layer.recalc(rootElem, layer)
@@ -870,6 +882,15 @@ template recalcDOM*(win:PgWindow)=
   recalcDOM(win.rootElem)
 
 #TODO: template recalcDOM*(pgui:Pgui)=
+
+
+proc refreshTextureCache*(rootElem: DivRef)=
+  for layer in rootElem.layers:
+    for elem in layer.elems:
+      elem.redrawFlag = 1
+
+
+
 #..................................
 
 proc onScaleDown*(this: DivRef)=

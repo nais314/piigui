@@ -42,8 +42,9 @@ gui.drawDom(gui.rootElem)
          |     r.draw(r, scrollX, scrollY)         -> drawDivRef or a widget draw
          |         |
          |         +-- clipRect = visibleClipRect(r, scrollX, scrollY)
+         |         +-- if redrawFlag set: render into textureCache at (0,0,w,h)
+         |         |     (NO screen-space clip here — the texture is its own canvas)
          |         +-- sdl.setClipRect(renderer, clipRect)
-         |         +-- redraw textureCache if needed (fill bg, draw text)
          |         +-- copy texture to screenRect = (x1-scrollX, y1-scrollY, w, h)
          |         +-- sdl.setClipRect(renderer, nil)     # reset clip
          |
@@ -57,6 +58,21 @@ The `scrollX`/`scrollY` passed to `draw` are the accumulated scroll offsets of
 the element's *scrollable ancestors* (not the element's own scroll). When a
 container is scrolled, all of its children receive a bigger `scrollX`, so their
 `screenRect` shifts left/up and previously hidden content becomes visible.
+
+**Important — the clip rect lives in two different coordinate spaces.**
+
+- `clipRect` (`visibleClipRect`) is computed in **screen** coordinates
+  (`x1`, `y1`, `w`, `h`), because it clips what is visible on the window.
+- `canvasRect` / `backgroundRect` (`0, 0, w, h`) and the `textureCache`
+  render target are in **texture-local** coordinates.
+
+SDL's clip rect is interpreted in the *current render target's* space. So the
+clip must be applied only around the **final on-screen copy** (`screenRect`),
+never while filling the texture. Setting the clip before
+`setRenderTarget(textureCache)` would clip the fill at the wrong offset and cut
+away the top/left of the element (this was the "button lost its shadow / got
+clipped" bug). The draw procs therefore compute `clipRect` up front, render the
+texture unclipped, then set the clip immediately before `copy`.
 
 The different elements use different draw procs, but they all share the same
 clip logic through `visibleClipRect`:

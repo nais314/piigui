@@ -194,6 +194,24 @@ as `innerW` and `innerH`, and the two-pass also decides whether `vScroll` /
 `hScroll` are needed, which `recalcScrollbar` reads when it positions the
 overlay.
 
+### Ordering reminder: flex-grow runs before the content size is final
+
+Inside `recalcFlex`, the flex-grow pass lives in `postProcessColumn` /
+`postProcessRow`. Flex-grow can enlarge a line (`lineH` for a column, `lineW`
+for a row) *after* the children were first sized. The content totals
+(`totalW` / `totalH`) and the `article.lineDims` entry for that line must
+therefore be finalized **after** the grow pass, not before.
+
+If they are recorded too early, `distributeContent` sees a content size that
+is smaller than the real one, concludes that the line does not fill the
+container, and applies `justifyContent` (e.g. `fjcCenter`) to shift it — a
+phantom extra offset that pushes the content away from the container's
+padding edge (`content.y1` no longer equals `parent.y1 + padding`).
+
+Rule of thumb: after any code that changes `lineW` / `lineH` (the flex-grow
+pass, and the `muAuto` / `muStretch` branch in `postProcessRow`), update the
+totals and the `article.lineDims` entry before `distributeContent` runs.
+
 ---
 
 ## Reference

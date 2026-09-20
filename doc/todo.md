@@ -52,3 +52,8 @@ like an LCD screen. the characters can be modified individually.
 
 - DONE: vhbox -> recalcVbox & recalcHBox
 - DONE: gui element timed events (blinking)
+
+
+One thing I preserved but you may want to fix later
+
+resetState sets nextX = this.x1 + this.style.padding (so x1 - 1 when padding is unset), while newRow uses this.x1 guarded by if padding > -1. Pre-existing off-by-one inconsistency between the first line and subsequent lines — I left it exactly as-is.

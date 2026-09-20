@@ -177,7 +177,7 @@ type
     typeName*: string # for type introspection
     w*,h*:int
     w_value*, h_value*:int # original user numeric value, used by scaling too
-    w_unit*, h_unit*: MeasurementUnit # PiXel, PerCent
+    w_unit*, h_unit*: MeasurementUnit # PiXel, PerCent, todo CHar
     innerW*, innerH*:int #* content size for scrollables - set by recalc
     scrollable*: bool #* if true, content may overflow and scroll
     scrollX*, scrollY*: int #* current scroll offsets
@@ -383,6 +383,7 @@ proc getID*(this: DivRef): string =
 
 proc parseSizeStr*(sizeStr:string): tuple[unit:MeasurementUnit,value:int]=
   ## relative sizeStr parser for controlls
+  #TODO: add "ch" = muCh - width of the current monotype character
   var
     value:int
 

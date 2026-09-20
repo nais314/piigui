@@ -8,8 +8,10 @@ import piigui/types
 
 import tables, math
 
+const debug = 1
+
 #[ 
- ######     ###    ##        ######  
+  ######     ###    ##        ######  
 ##    ##   ## ##   ##       ##    ## 
 ##        ##   ##  ##       ##       
 ##       ##     ## ##       ##       
@@ -26,51 +28,76 @@ import tables, math
 ##       ######## ######## ##     ##   
  ]#
 
-proc recalcFlex*(this: Divref, layer: Layer): tuple[w,h:int] =
-  ## flow:
-  ##  *if ~[this.activeStyle].flexDirection == fdRow:
-  ##     for elem in DivRef:
-  ##       calc elem.h, elem.w, lineH, lineW
-  ##      *postProcessRow():
-  ##         article.lines.add(line)
-  ##         article.lineDims.add((w: lineW, h: lineH, x: nextX, y:nextY))
-  ##        *FOR ELEM:
-  ##          CASE this.style.alignItems
-  ##          GET flexGrowDivider
-  ##          GET elementWithBiggestGrow
-  ##          APPLY FLEX-GROW
-  ##
-  ##        *flexGrowFrom ?
-  ##        *ELSE JUSTIFY CONTENT
-  ## 
-  ## 
-  ##  *elif ~[this.activeStyle].flexDirection == fdColumn:
-  ##     for elem in DivRef:
-  ##       calc elem.h, elem.w, lineH, lineW
-  ##      *postProcessColumn():
-  ##         article.lines.add(line)
-  ##         article.lineDims.add((w: lineW, h: lineH, x: nextX, y:nextY))
-  ##        *FOR ELEM:
-  ##          CASE this.style.alignItems
-  ##          GET flexGrowDivider
-  ##          GET elementWithBiggestGrow
-  ##          APPLY FLEX-GROW
-  ## 
-  ## 
-  ##  *distributeContent()
-  ##    *~[this.activeStyle].flexDirection == fdRow:
-  ##       SCROLL ?
-  ##      *CASE [this.activeStyle].alignContent:
-  ##    *~[this.activeStyle].flexDirection == fdColumn:
-  ##       [this.activeStyle].justifyContent:
-  ##    
-  #TODO    case this.style.alignContent
-  const debug = 1
-  
-  when debug > 0: echo "\n this = ", this.name, " ########## BEGIN recalcFlex ##########"
+#------------------------------------------------------------------------------
+# Types describing one layout run.
+#------------------------------------------------------------------------------
 
-  if this.layers[0].elems.len == 0:
-    when debug > 0: echo "NO CHILDS? EXITING", this.name, " ########## END recalcFlex ##########"
+type
+  LineDims = tuple[w, h, x, y: int]  # one assembled line/column: size + origin
+  Article = object
+    lines: seq[seq[DivRef]]          # every line/column, each holding its children
+    lineDims: seq[LineDims]          # geometry of each line/column (same order)
+
+  FlexLayout = object
+    ## mutable state shared by every step of one layout pass.
+    ## Hoisted out of `recalcFlex` (it used to be closure-captured variables)
+    ## so the helper procedures can be plain `nimcall` procs: faster and,
+    ## together with the forward declarations below, readable top-down.
+    remainingWidth: int     # free width still left in the current line/column
+    remainingHeight: int    # free height still left in the current line/column
+    areaWidth: int          # full inner width of this pass (this.w - padding - scrollbar)
+    areaHeight: int         # full inner height of this pass
+    nextX: int              # where the next child's x1 goes
+    nextY: int              # where the next child's y1 goes
+    currentLine: seq[DivRef] # children of the line/column currently being assembled
+    lineWidth: int          # accumulated width of the current line/column
+    lineHeight: int         # accumulated height of the current line/column
+    contentWidth: int       # total width of all lines (the final content size)
+    contentHeight: int      # total height of all lines (the final content size)
+    article: Article        # finished lines + geometry, for distributeContent
+
+#------------------------------------------------------------------------------
+# Forward declarations, so `recalcFlex` can be read top-down first.
+#------------------------------------------------------------------------------
+
+proc resetState(this: DivRef, state: var FlexLayout, areaWidth, areaHeight: int) #!FWD
+proc postProcessRow(this: DivRef, state: var FlexLayout) #!FWD
+proc postProcessColumn(this: DivRef, state: var FlexLayout) #!FWD
+proc newRow(this: DivRef, state: var FlexLayout) #!FWD
+proc newColumn(this: DivRef, state: var FlexLayout) #!FWD
+proc distributeContent(this: DivRef, state: var FlexLayout) #!FWD
+proc mainLayout(this: DivRef, layer: Layer, state: var FlexLayout) #!FWD
+proc layoutPass(this: DivRef, layer: Layer, state: var FlexLayout,
+                areaWidth, areaHeight: int): tuple[w, h: int] #!FWD
+
+#------------------------------------------------------------------------------
+# recalcFlex
+#------------------------------------------------------------------------------
+
+proc recalcFlex*(this: Divref, layer: Layer): tuple[w,h:int] =
+  ## Flex layout for one layer of `this`.
+  ##
+  ## Flow (top-down):
+  ##   1. if `this` is the root, sync its box to the window size
+  ##   2. compute the inner area (this.w/h minus padding)
+  ##   3. run the layout, once or twice:
+  ##        * one pass for ofHidden, or when nothing overflows
+  ##        * two passes for ofScroll, to reserve scrollbar space
+  ##   4. each pass:
+  ##        resetState -> mainLayout -> distributeContent
+  ##      mainLayout walks the children, sizes them from their w_unit/h_unit,
+  ##      and breaks into lines (fdRow) or columns (fdColumn):
+  ##        newRow/newColumn close a line; postProcessRow/Column then apply
+  ##        alignItems and flexGrow; distributeContent spreads the finished
+  ##        lines with alignContent/justifyContent.
+  ##   5. store the content size (innerW/innerH) and recurse into children
+  when debug > 0:
+    echo "\n this = ", this.name, " ########## BEGIN recalcFlex ##########"
+
+  # nothing to lay out: stop early
+  if layer.elems.len == 0:
+    when debug > 1:
+      echo "recalcFlex: no children, EXITING ", this.name, " ########## END recalcFlex ##########"
     return
 
   when debug > 1:
@@ -83,12 +110,12 @@ proc recalcFlex*(this: Divref, layer: Layer): tuple[w,h:int] =
     echo "this.x2, y2 ", this.x2, ", ", this.y2
     echo "this.w, h ", this.w, " x ", this.h
 
-  # for root, get window size - useful if window resized
+  # the root's box tracks the window size, so a resize updates the layout
   if this.parent == nil:
-    var ww, wh: cint
-    sdl.getSize(this.pgui.window, ww, wh)
-    this.w = ww
-    this.h = wh
+    var windowWidth, windowHeight: cint
+    sdl.getSize(this.pgui.window, windowWidth, windowHeight)
+    this.w = windowWidth
+    this.h = windowHeight
     this.x1 = 0
     this.y1 = 0
     this.x2 = this.w - 1
@@ -98,938 +125,897 @@ proc recalcFlex*(this: Divref, layer: Layer): tuple[w,h:int] =
       echo "this.w ", this.w
       echo "this.h ", this.h
 
-  # #TODO? innerW innerH for scroll 
   result.w = this.w
   result.h = this.h
-  #* .w and .h are now initialized, ready for use
+  # .w and .h are now initialised and ready to use
 
-  # article holds lines of elems,
-  # - needed for line distribution at end
-  type Article = object
-    lines: seq[seq[DivRef]]
-    lineDims: seq[tuple[w,h, x,y:int]]
-
+  # inner area available to the content (after padding, before scrollbar)
   var
-    availW: int # form line from parent.w downto 0
-    availH: int
-    thisY2: int # thisY2 = this.y2 - this.style.padding
-    nextX: int
-    nextY: int # used at line calculation #padding#
-    line: seq[DivRef] # the current line
-    lineH: int
-    lineW: int
-    totalW: int # used at aligning the whole area
-    totalH: int # and by result
-    origiW: int # save original values for calculations
-    origiH: int
-    article: Article
-
-  proc resetState(availWArg, availHArg: int) =
-    ## (re)initializes the per-pass layout state
-    availW = availWArg
-    availH = availHArg
-    origiW = availW
-    origiH = availH
-    nextX = this.x1 + this.style.padding
-    nextY = this.y1 + this.style.padding
-    line.setLen(0)
-    lineH = 0
-    lineW = 0
-    totalW = 0
-    totalH = 0
-    article.lines = @[]
-    article.lineDims = @[]
-
-    if this.style.padding > -1:
-      thisY2 = this.y2 - this.style.padding
-      if this.y1 > thisY2: thisY2 = this.y1 #boundaries check
-    else:
-      thisY2 = this.y2
-    when debug > 1: echo "origi W x H: ", origiW, " x ", origiH
-    when debug > 1: echo "avail W x H: ", availW, " x ", availH
-
-  # base avail (padding), before scrollbar reservation
-  var
-    baseAvailW: int
-    baseAvailH: int
+    baseAreaWidth: int
+    baseAreaHeight: int
   if this.style.padding > -1:
-    baseAvailW = this.w - (this.style.padding * 2)
-    baseAvailH = this.h - (this.style.padding * 2)
-    if baseAvailW < 0: baseAvailW = 0 #boundaries check
-    if baseAvailH < 0: baseAvailH = 0 #boundaries check
+    baseAreaWidth = this.w - (this.style.padding * 2)
+    baseAreaHeight = this.h - (this.style.padding * 2)
+    if baseAreaWidth < 0: baseAreaWidth = 0   # boundary check
+    if baseAreaHeight < 0: baseAreaHeight = 0 # boundary check
   else:
-    baseAvailW = this.w # used at line calculation
-    baseAvailH = this.h
+    baseAreaWidth = this.w
+    baseAreaHeight = this.h
 
-  #*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  # one state object, reused across both passes (resetState clears it)
+  var state: FlexLayout
 
-  #[ 
-      ########  ####  ######  ######## 
-      ##     ##  ##  ##    ##    ##    
-      ##     ##  ##  ##          ##    
-      ##     ##  ##   ######     ##    
-      ##     ##  ##        ##    ##    
-      ##     ##  ##  ##    ##    ##    
-      ########  ####  ######     ##    
-  ]#
-  proc distributeContent()=#! distributeContent distributeContent
-    ## it is flex-alignContent,
-    ## but i like the word distribute more!
-
-    # if useless
-    if article.lines.len == 0:
-      when debug > 0: echo "distributeContent:  article.lines.len == 0   RETURN" 
-      return
-    #if this.style.alignContent == facStart: return
-    #...................
-
-    var
-      nY:int # new Y
-      delta:int # distance
-      remainder:int
-
-    if this.style.flexDirection == fdRow:
-      
-      # if useless
-      if totalH > origiH: # else scroll :)
-        when debug > 0: echo "distributeContent totalH > origiH ",totalH, ">",origiH," RETURN"
-        return 
-      #[ 
-        88""Yb  dP"Yb  Yb        dP                        
-        88__dP dP   Yb  Yb  db  dP                         
-        88"Yb  Yb   dP   YbdPYbdP                          
-        88  Yb  YbodP     YP  YP
-
-          db    88     88  dP""b8 88b 88                  
-          dPYb   88     88 dP   `" 88Yb88                  
-        dP__Yb  88  .o 88 Yb  "88 88 Y88                  
-        dP""""Yb 88ood8 88  YboodP 88  Y8
-
-        dP""b8  dP"Yb  88b 88 888888 888888 88b 88 888888 
-        dP   `" dP   Yb 88Yb88   88   88__   88Yb88   88   
-        Yb      Yb   dP 88 Y88   88   88""   88 Y88   88   
-        YboodP  YbodP  88  Y8   88   888888 88  Y8   88   
-      ]#
-      case this.style.alignContent: #* ALIGN ROWS VERTICALLY IN PARENT
-        of facUndefined, facStart: discard
-
-        of facEnd: #TODO: scroll ?!
-          nY = thisY2#this.y2
-          for i_line in countdown(article.lines.high,0):
-            nY -= (article.lineDims[i_line].h - 1)
-            delta = nY - (article.lineDims[i_line].y)
-            for elem in article.lines[i_line]:
-              elem.y1 += delta
-              elem.y2 += delta
-        
-        of facCenter:
-          when debug > 1: echo "distributeContent:  row alignContent facCenter"
-          when debug > 1: echo origiH," - ",totalH,"div 2 = ", (origiH - totalH) div 2
-
-          delta = (origiH - totalH) div 2
-          if delta > 1:
-            for i_line in countdown(article.lines.high,0):
-              for elem in article.lines[i_line]:
-                elem.y1 += delta
-                elem.y2 += delta
-
-        of facStretch: #TODO TEST
-          # [..]DS
-          # get how much each line of elems heigth needs 2 grow
-          delta = (origiH - totalH) div article.lines.len
-          remainder = origiH - (delta * article.lines.len) # rounding patch
-
-          var offset = 0 #*--offset
-          for i_line in 0..article.lines.high:
-            # rounding patch
-            let grow = delta + (if remainder > 0: 1 else: 0)
-            if remainder > 0: remainder -= 1
-
-            article.lineDims[i_line].h += grow
-            article.lineDims[i_line].y += offset #*--offset
-
-            for i_elem in article.lines[i_line]:
-              i_elem.y1 += offset        # shift down by previous lines' growth
-              i_elem.h  += grow          # stretch to new line height
-              i_elem.y2 += offset + grow # both shift and stretch
-
-            offset += grow #*--offset
-
-
-        of facSpaceBetween:
-          if article.lines.len > 1:
-            delta = (origiH - totalH) div (article.lines.len - 1) #! -1 (4 rows having 3 spaces between)
-            remainder = (origiH - totalH) - (delta * (article.lines.len - 1))
-
-            for i_line in 1..article.lines.high: #! starts from 1, no space above
-              for i_elem in 0..article.lines[i_line].high:
-                article.lines[i_line][i_elem].y1 += delta * i_line
-                article.lines[i_line][i_elem].y2 += delta * i_line
-                if remainder > 0:
-                  article.lines[i_line][i_elem].y1 += 1 * i_line
-                  article.lines[i_line][i_elem].y2 += 1 * i_line
-              remainder -= 1
-   
-
-        of facSpaceAround:
-          if article.lines.len > 1:
-            delta = (origiH - totalH) div (article.lines.len + 1)
-            remainder = origiH - (delta * (article.lines.len + 1))
-
-            for i_line in 0..article.lines.high:
-              for i_elem in 0..article.lines[i_line].high:
-                article.lines[i_line][i_elem].y1 += delta * (i_line + 1)
-                article.lines[i_line][i_elem].y2 += delta * (i_line + 1)
-                if remainder > 0:
-                  article.lines[i_line][i_elem].y1 += 1 * (i_line + 1)
-                  article.lines[i_line][i_elem].y2 += 1 * (i_line + 1)
-              remainder -= 1
-
-      #[ 
-
-      88888 88   88 .dP"Y8 888888 88 888888 Yb  dP 
-          88 88   88 `Ybo."   88   88 88__    YbdP  
-      o.  88 Y8   8P o.`Y8b   88   88 88""     8P   
-      "bodP' `YbodP' 8bodP'   88   88 88      dP    
-
-      88""Yb  dP"Yb  Yb        dP                   
-      88__dP dP   Yb  Yb  db  dP                    
-      88"Yb  Yb   dP   YbdPYbdP                     
-      88  Yb  YbodP     YP  YP                      
-                                                            
-      ]#
-      if totalW < origiW: # else scroll
-        case this.style.justifyContent: #* ALIGN ROWS HORIZONTALLY IN PARENT
-          of fjcUndefined, fjcStart: discard
-
-          of fjcEnd:
-            for i_line in 0..article.lines.high:
-              delta = origiW - article.lineDims[i_line].w
-              for i_elem in article.lines[i_line]:
-                i_elem.x1 += delta
-                i_elem.x2 += delta
-
-          of fjcCenter:
-            for i_line in 0..article.lines.high:
-              delta = (origiW - article.lineDims[i_line].w) div 2
-              if delta > 1:
-                for i_elem in article.lines[i_line]:
-                  i_elem.x1 += delta
-                  i_elem.x2 += delta
-
-
-
-
-
-
-
-
-#[ 
-██████  ██ ███████ ████████ ██████  ██ ██████  ██    ██ ████████ ███████ 
-██   ██ ██ ██         ██    ██   ██ ██ ██   ██ ██    ██    ██    ██      
-██   ██ ██ ███████    ██    ██████  ██ ██████  ██    ██    ██    █████   
-██   ██ ██      ██    ██    ██   ██ ██ ██   ██ ██    ██    ██    ██      
-██████  ██ ███████    ██    ██   ██ ██ ██████   ██████     ██    ███████ 
-                                                                         
-                                                                         
- ██████  ██████  ██      ██    ██ ███    ███ ███    ██   
-██      ██    ██ ██      ██    ██ ████  ████ ████   ██   
-██      ██    ██ ██      ██    ██ ██ ████ ██ ██ ██  ██   
-██      ██    ██ ██      ██    ██ ██  ██  ██ ██  ██ ██   
- ██████  ██████  ███████  ██████  ██      ██ ██   ████   
-                                                                         
-                                                                         
- ]#
-    #!............flexDirection == fdColumn:................
-    #! ROTATE YOUR VIEW 90 degrees
-    if this.style.flexDirection == fdColumn:#!............
-      when debug > 0: echo "distribute fdcolumn"
-
-      if totalW < origiW: # else scroll :)
-
-        # TODO CONTINUE
-        case this.style.alignContent: #* ALIGN COLUMNS HORIZONTALLY IN PARENT
-          of facUndefined: discard
-          of facStart: discard
-          of facCenter:
-              when debug > 1: echo ">>> distribute fdcolumn  facCenter <<<"
-              delta = (origiW - totalW) div 2
-              remainder = (origiW - totalW) - (delta * 2)
-              for i_line in 0..article.lines.high:
-                for i_elem in article.lines[i_line]:
-                  i_elem.x1 += delta
-                  i_elem.x2 += delta
-                  if remainder > 0:
-                    i_elem.x1 += 1
-                    i_elem.x2 += 1
-                remainder -= 1
-
-          of facSpaceBetween:
-            if article.lines.len > 1:
-              delta = (origiW - totalW) div (article.lines.len - 1)
-              remainder = (origiW - totalW) - (delta * (article.lines.len - 1))
-              var offset = 0
-              for i_line in 0..article.lines.high:
-                if i_line > 0:
-                  offset += delta
-                  if remainder > 0:
-                    offset += 1
-                    remainder -= 1
-                for i_elem in article.lines[i_line]:
-                  i_elem.x1 += offset
-                  i_elem.x2 += offset
-            else: # one column: center it (same as facCenter)
-              delta = (origiW - totalW) div 2
-              remainder = (origiW - totalW) - (delta * 2)
-              for i_elem in article.lines[0]:
-                i_elem.x1 += delta
-                i_elem.x2 += delta
-                if remainder > 0:
-                  i_elem.x1 += 1
-                  i_elem.x2 += 1
-
-          of facSpaceAround:
-            if article.lines.len > 1:
-              delta = (origiW - totalW) div (article.lines.len + 1)
-              remainder = (origiW - totalW) - (delta * (article.lines.len + 1))
-            elif article.lines.len == 1: # one line, facCenter:
-              delta = (origiW - totalW) div 2
-              remainder = (origiW - totalW) - (delta * 2)
-            var i = 0
-            for i_line in 0..article.lines.high:
-              i += 1
-              for i_elem in article.lines[i_line]:
-                i_elem.x1 += delta * i
-                i_elem.x2 += delta * i
-                if remainder > 0:
-                  i_elem.x1 += 1
-                  i_elem.x2 += 1
-              remainder -= 1
-
-          of facStretch:
-              delta = (origiW - totalW) div article.lines.len
-              remainder = (origiW - totalW) - (delta * article.lines.len)
-              for i_line in 0..article.lines.high:
-                article.lineDims[i_line].w += delta
-                if remainder > 0: article.lineDims[i_line].w += 1
-                for i_elem in article.lines[i_line]:
-                  i_elem.x1 += i_line * delta
-                  i_elem.x2 += i_line * delta + delta
-                  i_elem.w += delta
-                  if remainder > 0:
-                    i_elem.x2 += 1
-                    i_elem.w += 1
-                remainder -= 1
-
-          of facEnd:
-            delta = (origiW - totalW)
-            for i_line in 0..article.lines.high:
-              for i_elem in article.lines[i_line]:
-                  i_elem.x1 += delta
-                  i_elem.x2 += delta
-          #else: discard
-
-#[ 
- 88888 88   88 .dP"Y8 888888 88 888888 Yb  dP  
-    88 88   88 `Ybo."   88   88 88__    YbdP   
-o.  88 Y8   8P o.`Y8b   88   88 88""     8P    
-"bodP' `YbodP' 8bodP'   88   88 88      dP     
-
- dP""b8  dP"Yb  88     88   88 8b    d8 88b 88 
-dP   `" dP   Yb 88     88   88 88b  d88 88Yb88 
-Yb      Yb   dP 88  .o Y8   8P 88YbdP88 88 Y88 
- YboodP  YbodP  88ood8 `YbodP' 88 YY 88 88  Y8 
- ]#
-      if totalH < origiH: # else scroll
-        case this.style.justifyContent: #* ALIGN COLUMNS VERTICALLY IN PARENT
-          of fjcUndefined,fjcStart: discard
-          of fjcEnd:
-            for i_line in 0..article.lines.high:
-              delta = origiH - article.lineDims[i_line].h
-              for i_elem in article.lines[i_line]:
-                i_elem.y1 += delta
-                i_elem.y2 += delta
-          of fjcCenter:
-            when debug > 1: echo ">>> distribute fdcolumn  fjcCenter <<<"
-            for i_line in 0..article.lines.high:
-              delta = (origiH - article.lineDims[i_line].h) div 2
-              for i_elem in article.lines[i_line]:
-                i_elem.y1 += delta
-                i_elem.y2 += delta
-  #*______________________________________________________
-
-
-
-
-
-
-
-
-
-  #[ 
-      ########   #######   ######  ######## 
-      ##     ## ##     ## ##    ##    ##    
-      ##     ## ##     ## ##          ##    
-      ########  ##     ##  ######     ##    
-      ##        ##     ##       ##    ##    
-      ##        ##     ## ##    ##    ##    
-      ##         #######   ######     ##    
-
-      ######   #######  ##       
-      ##    ## ##     ## ##       
-      ##       ##     ## ##       
-      ##       ##     ## ##       
-      ##       ##     ## ##       
-      ##    ## ##     ## ##       
-      ######   #######  ######## 
-  ]#
-
-  #! PostProcess ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  proc postProcessColumn()= #! postProcessColumn postProcessColumn
-    if this.style.spacing > -1: #spacing# #TODO #????????
-      lineH -= this.style.spacing
-    # add line to Article for content distribution
-    totalW += lineW
-    totalH += lineH #! content height (needed for scrollables)
-    article.lines.add(line)
-    article.lineDims.add((w: lineW, h: lineH, x: nextX, y:nextY))
-    #~~~~~~~~~~~~~~~~~~~~~~
-    var
-      flexGrowDivider:int
-      elementWithBiggestGrow: int = -1
-
-
-    # muStretch w, h
-    # align items in column horizontally:
-    for i_elem in 0..line.high: # unorthodox method:
-      case this.style.alignItems:
-        of faiUndefined, faiStart: discard
-        of faiEnd:
-            if line[i_elem].w < lineW:
-              let delta = lineW - line[i_elem].w
-              line[i_elem].x1 += delta
-              line[i_elem].x2 += delta
-        of faiCenter:
-            if line[i_elem].w < lineW:
-              let delta = (lineW - line[i_elem].w) div 2
-              if delta > 0:
-                line[i_elem].x1 += delta
-                line[i_elem].x2 += delta
-        of faiStretch:
-            if line[i_elem].w < lineW:
-              let delta = lineW - line[i_elem].w
-              line[i_elem].x2 += delta
-              line[i_elem].w += delta
-      
-      # for correcting int division
-      #   store the elementWithBiggestGrow
-      #   later add the 'error' to its dimension
-      if line[i_elem].style.flexGrow > 0:
-        flexGrowDivider += line[i_elem].style.flexGrow
-        if elementWithBiggestGrow == -1: # save for adding remaining space to
-          elementWithBiggestGrow = i_elem
-        #[ elif line[i_elem].style.flexGrow > line[elementWithBiggestGrow].styleCache[line[elementWithBiggestGrow].activeStyle].flexGrow:
-          elementWithBiggestGrow = i_elem ]#
-        elif line[i_elem].style.flexGrow > line[elementWithBiggestGrow].style.flexGrow:
-          elementWithBiggestGrow = i_elem
-    #........................................
-    if lineH < origiH and flexGrowDivider > 0 and
-      this.style.flexGrowFrom <= (lineH / origiH * 100).int:
-
-      when debug > 1: 
-        echo "postProcessColumn flexGrowFrom ", (lineH / origiH * 100).int
-        echo "postProcessColumn flexGrowDivider ", flexGrowDivider, " origiH ", origiH, " lineH ", lineH
-
-      let deltaSpace = if flexGrowDivider > origiH - lineH: 1 else: (origiH - lineH) div flexGrowDivider
-      when debug > 1: echo "postProcessColumn deltaSpace ", deltaSpace
-
-      # int division error patch
-      let remainingSpace =  if flexGrowDivider > origiH - lineH: 0 else: origiH - (flexGrowDivider * deltaSpace) - lineH
-      when debug > 1: echo "postProcessColumn remainingSpace ", remainingSpace
-      
-      for i_elem in 0..line.high:
-        
-        if lineH == origiH: break #!!!
-
-        if line[i_elem].style.flexGrow > 0:
-          var delta = line[i_elem].style.flexGrow * deltaSpace
-          if i_elem == elementWithBiggestGrow: # int division error patch
-            delta += remainingSpace
-          if delta + lineH > origiH: delta = origiH - lineH #? patch
-
-          line[i_elem].h += delta
-          line[i_elem].y2 += delta
-          lineH += delta
-
-          when debug > 0:
-            echo "postProcessColumn>>> ",line[i_elem].name, " y1 ", line[i_elem].y1, " y2 ",line[i_elem].y2
-            echo "postProcessColumn>>> "," x1 ", line[i_elem].x1, " x2 ",line[i_elem].x2, "\n"
-          # adjust the rest
-          if i_elem < line.high:
-            for ii_elem in i_elem + 1 .. line.high:
-              line[ii_elem].y1 += delta
-              line[ii_elem].y2 += delta
-
-
-
-
-
-  #[ 
-      ########   #######   ######  ######## 
-      ##     ## ##     ## ##    ##    ##    
-      ##     ## ##     ## ##          ##    
-      ########  ##     ##  ######     ##    
-      ##        ##     ##       ##    ##    
-      ##        ##     ## ##    ##    ##    
-      ##         #######   ######     ##    
-
-
-      ########   #######  ##      ##        
-      ##     ## ##     ## ##  ##  ##        
-      ##     ## ##     ## ##  ##  ##        
-      ########  ##     ## ##  ##  ##        
-      ##   ##   ##     ## ##  ##  ##        
-      ##    ##  ##     ## ##  ##  ##        
-      ##     ##  #######   ###  ###         
-  ]#
-  proc postProcessRow()= #! postProcessRow  postProcessRow  postProcessRow
-    # add line to Article for content distribution
-    if this.style.spacing > -1: #spacing#
-      lineW -= this.style.spacing
-    #if lineH < 1: lineH = availH
-    totalH += lineH #! important
-    totalW += lineW #! content width (needed for scrollables)
-    article.lines.add(line)
-    article.lineDims.add((w: lineW, h: lineH, x: nextX, y:nextY))
-    #~~~~~~~~~~~~~~~~~~~~~~
-    var
-      flexGrowDivider:int
-      elementWithBiggestGrow: int = -1
-
-    when debug > 2:
-      for i_elem in 0..line.high:
-        echo "postProcessRow: >>>>>> ", $i_elem, " <<<<<<< "
-        
-
-    for i_elem in 0..line.high:
-
-      case line[i_elem].h_unit:#!NEW
-        of muAuto, muStretch: #TODO TEST !!!!!!!!!!!!!!!
-          if lineH <= 1: # if user not assigned height, stretch to lineH
-            let oldLineH = lineH
-            lineH = if availH <= 0: origiH else: availH
-            line[i_elem].h = lineH
-            line[i_elem].y2 += (lineH - 1)
-            totalH += (lineH - oldLineH)
-            article.lineDims[article.lineDims.high].h = lineH
-          else:
-            line[i_elem].h = lineH
-            line[i_elem].y2 += (lineH - 1)
-          #when debug > 1: echo "lineH: ", lineH
-        else: discard
-
-      case this.style.alignItems:
-        of faiUndefined,faiStart: discard
-        of faiEnd:
-            if line[i_elem].h < lineH:
-              let delta = lineH - line[i_elem].h
-              line[i_elem].y1 += delta
-              line[i_elem].y2 += delta
-        of faiCenter:
-            if line[i_elem].h < lineH:
-              let delta = (lineH - line[i_elem].h) div 2
-              if delta > 0:
-                line[i_elem].y1 += delta
-                line[i_elem].y2 += delta
-              when debug > 1: echo i_elem, "postProcessRow:  lineH ", lineH, ", ", line[i_elem].h, ", ", line[i_elem].name, ", ", delta, ", ", line[i_elem].y1
-        of faiStretch:
-            if line[i_elem].h < lineH:
-              let delta = lineH - line[i_elem].h
-              line[i_elem].y2 += delta
-              line[i_elem].h += delta
-
-      # for correcting int division
-      # store the elementWithBiggestGrow
-      # later add the 'error' to its dimension (remainder)
-      if line[i_elem].style.flexGrow > 0:
-        flexGrowDivider += line[i_elem].style.flexGrow
-        if elementWithBiggestGrow == -1: # save for adding remaining space to
-          elementWithBiggestGrow = i_elem
-        elif line[i_elem].style.flexGrow > 
-          line[elementWithBiggestGrow].style.flexGrow:
-          elementWithBiggestGrow = i_elem
-
-    if lineW < origiW and flexGrowDivider > 0 and
-      this.style.flexGrowFrom <= (lineW / origiW * 100).int:
-      when debug > 1:echo "postProcessRow: flexGrowDivider ", flexGrowDivider, " origiW ", origiW, " lineW ", lineW
-
-      let deltaSpace = if flexGrowDivider > origiW - lineW: 1 else: (origiW - lineW) div flexGrowDivider
-      when debug > 1:echo "postProcessRow: deltaSpace ", deltaSpace
-
-      # int division error patch
-      let remainingSpace =  if flexGrowDivider > origiW - lineW: 0 else: origiW - (flexGrowDivider * deltaSpace) - lineW
-      when debug > 1:echo "postProcessRow: remainingSpace ", remainingSpace
-      
-      for i_elem in 0..line.high:
-        
-        if lineW == origiW: break #!!!
-
-        if line[i_elem].style.flexGrow > 0:
-          var delta = line[i_elem].style.flexGrow * deltaSpace
-          if i_elem == elementWithBiggestGrow: # int division error patch
-            delta += remainingSpace
-          if delta + lineW > origiW: delta = origiW - lineW #? patch
-
-          line[i_elem].w += delta
-          line[i_elem].x2 += delta
-          lineW += delta
-
-          when debug > 1: echo "postProcessRow: >>> ",line[i_elem].name, " ", line[i_elem].x1, " ",line[i_elem].x2
-
-          # adjust the rest
-          if i_elem < line.high:
-            for ii_elem in i_elem + 1 .. line.high:
-              line[ii_elem].x1 += delta
-              line[ii_elem].x2 += delta
-
-    #[ elif lineW < origiW:# if not grown full width
-      when debug > -1: echo "justifyContent ", this.style.justifyContent
-      case this.style.justifyContent:
-        of fjcUndefined,fjcStart: discard
-        of fjcEnd:
-          if line[line.high].x2 < thisX2:
-            let delta = thisX2 - line[line.high].x2
-            for elem in line:
-              elem.x2 += delta
-              elem.x1 += delta
-        of fjcCenter:
-          if line[line.high].x2 < thisX2:
-            let delta = (thisX2 - line[line.high].x2) div 2
-            if delta > 0:
-              for elem in line:
-                elem.x2 += delta
-                elem.x1 += delta ]#
-
-
-  #end postProcessRow......................
-
-
-
-
-  #[
-
-  8b  8 8888 Yb        dP 8    888 8b  8 8888 
-  8Ybm8 8www  Yb  db  dP  8     8  8Ybm8 8www 
-  8  "8 8      YbdPYbdP   8     8  8  "8 8    
-  8   8 8888    YP  YP    8888 888 8   8 8888 
-                                                                      
-  ]#
-  #! Process ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  #   support functions:
-  proc newRow()=
-    when debug > 1: echo "---newRow--- line.len ", line.len
-    if line.len > 0: postProcessRow()
-
-    availW = origiW
-    availH -= lineH
-
-    nextY = nextY + lineH - 1 
-    if this.style.spacing > -1:
-      nextY += this.style.spacing #spacing#
-    
-    nextX = this.x1
-    if this.style.padding > -1:
-      nextX += this.style.padding #padding#
-    
-    lineW = 0
-    lineH = 0
-    line.setLen(0)
-
-  proc newColumn()=
-    when debug > 1: echo "---newColumn. line len: ", line.len
-    if line.len > 0: postProcessColumn()
-
-    availH = origiH
-    availW -= lineW
-
-    nextY = this.y1
-    if this.style.padding > -1:
-      nextY += this.style.padding #padding#
-      
-    nextX = nextX + lineW - 1
-    if this.style.spacing > -1:
-      nextX += this.style.spacing #spacing#
-    
-    lineH = 0
-    lineW = 0
-    line.setLen(0)
-  #......................................
-
-
-
-  #[ 
-       ######  ########    ###    ########  ######## 
-      ##    ##    ##      ## ##   ##     ##    ##    
-      ##          ##     ##   ##  ##     ##    ##    
-       ######     ##    ##     ## ########     ##    
-            ##    ##    ######### ##   ##      ##    
-      ##    ##    ##    ##     ## ##    ##     ##    
-       ######     ##    ##     ## ##     ##    ##    
-  ]#
-
-  #[ 
-      ███████ ██████  ██████   ██████  ██     ██ 
-      ██      ██   ██ ██   ██ ██    ██ ██     ██ 
-      █████   ██   ██ ██████  ██    ██ ██  █  ██ 
-      ██      ██   ██ ██   ██ ██    ██ ██ ███ ██ 
-      ██      ██████  ██   ██  ██████   ███ ███  
-                                            
-  ]#
-  proc mainLayout() =
-    if this.style.flexDirection == fdRow:#! ---- fdRow
-      #todo valign, align
-      when debug > 1: echo "#####  this.style.flexDirection == fdRow:"
-      for elem in layer.elems:
-
-        if elem of BRElem:
-          newRow()
-          continue
-
-        case elem.h_unit: #.................. 
-          of muAuto, muStretch: 
-            #discard
-            elem.h = 1#availH #origiH #!NEW
-          of muPx:
-            elem.h = elem.h_value
-          of muPc:
-            elem.h = (origiH.float / (100.float / elem.h_value.float)).floor.int - 1
-            #if elem.h > availH: elem.h = origiH
-
-        #!TEST: if lineH < elem.h: lineH = elem.h #TODO boundaries and sanity check
-
-
-        case elem.w_unit: #.................. 
-          of muAuto,muStretch:
-            # not the same as justify stretch
-            # useful for the last elem in the row
-            # for multiple elems see flexGrow!
-            elem.w = availW
-            line.add(elem)
-            # coordinates
-            elem.x1 = nextX
-            elem.x2 = nextX + elem.w - 1
-            elem.y1 = nextY
-            elem.y2 = nextY + elem.h - 1
-            lineW += elem.w #!
-            newRow()
-
-          of muPx:
-            elem.w = elem.w_value
-            if availW - elem.w < 0:
-              if not (this.style.overflow == ofScroll): newRow()
-
-            lineW += elem.w  
-            availW -= elem.w
-            line.add(elem)
-            # coordinates
-            elem.x1 = nextX
-            elem.x2 = nextX + elem.w - 1
-            elem.y1 = nextY
-            elem.y2 = nextY + elem.h - 1
-            nextX = nextX + elem.w
-            if this.style.spacing > -1: 
-              nextX += this.style.spacing
-              lineW += this.style.spacing
-              availW -= this.style.spacing
-
-          of muPc:
-            elem.w = (origiW.float / (100.float / elem.w_value.float)).floor.int - 1
-            if availW - elem.w <= 0:
-              if not (this.style.overflow == ofScroll): newRow()
-
-            lineW += elem.w
-            availW -= elem.w
-            line.add(elem)
-            # coordinates
-            elem.x1 = nextX
-            elem.x2 = nextX + elem.w - 1
-            elem.y1 = nextY
-            elem.y2 = nextY + elem.h - 1
-            nextX = nextX + elem.w
-            if this.style.spacing > -1:
-              nextX += this.style.spacing
-              lineW += this.style.spacing
-              availW -= this.style.spacing
-
-            when debug > 1: echo "row muPc ", elem.w_value,"->",elem.w," aW:", availW
-
-        if lineH < elem.h: lineH = elem.h #TODO boundaries and sanity check
-
-
-
-        when debug > 1:
-          echo elem.name, " flex w/h: ", elem.w, " / ", elem.h
-          echo elem.name, " flex x1,y1: ", elem.x1, ", ", elem.y1
-          echo elem.name, " flex x2,y2: ", elem.x2, ", ", elem.y2
-          echo elem.name, ", padding: ", this.style.padding
-          echo ""
-
-      if line.len > 0: postProcessRow() # post process last row
-
-      if totalH < origiH or totalW < origiW: distributeContent() # TODO: scroll
-
-      #TODO SCROLL
-
-    #[
-
-    888888 8888b.   dP""b8  dP"Yb  88     88   88 8b    d8 88b 88 
-    88__    8I  Yb dP   `" dP   Yb 88     88   88 88b  d88 88Yb88 
-    88""    8I  dY Yb      Yb   dP 88  .o Y8   8P 88YbdP88 88 Y88 
-    88     8888Y"   YboodP  YbodP  88ood8 `YbodP' 88 YY 88 88  Y8 
-
-    ]#
-    #!................................
-    elif this.style.flexDirection == fdColumn or  #!---- fdColumn
-         this.style.flexDirection == fdUndefined:
-      ## calculate childs position Vertically
-
-      when debug > 0: echo " START FDCOLUMN ", this.name
-
-      #todo valign, align
-
-      for elem in layer.elems:
-        #echo "test  ", elem.name
-        if elem of BRElem:
-          newColumn()
-          continue
-
-        case elem.w_unit:
-          #[ of muAuto:
-            #? elem.w = elem.w_value
-            #(elem.w, elem.h) = elem.recalc(elem)
-            discard ]#
-
-          of muAuto,muStretch:#todo test
-            elem.w = availW
-
-          of muPx:
-            elem.w = elem.w_value
-
-          of muPc:
-            elem.w = (origiW.float / (100.float / elem.w_value.float)).floor.int - 1
-
-
-        if lineW < elem.w: lineW = elem.w  #todo
-
-
-        case elem.h_unit: # H H H H H H H H H H H H H H H H H H 
-          of muAuto, #: #discard # calculated #TODO think
-            muStretch:
-            when debug > 1: echo "muStretch"
-            elem.h = availH
-            line.add(elem)
-            availH -= elem.h
-            #line.add(elem) #????
-            lineH += elem.h
-            # coordinates
-            elem.x1 = nextX
-            elem.x2 = nextX + elem.w - 1
-            elem.y1 = nextY
-            elem.y2 = nextY + elem.h - 1
-            nextY = nextY + elem.h
-            #[ if this.style.spacing > -1:
-              nextY += this.style.spacing
-              lineH += this.style.spacing
-              availH -= this.style.spacing ]#
-            ####
-            newColumn()
-
-          of muPx:
-            elem.h = elem.h_value
-            if availH - elem.h < 0:
-              when debug > 1: echo "availH - elem.h < 0: ", availH, " - ", elem.h, " !"
-              if not (this.style.overflow == ofScroll): newColumn()
-
-            availH -= elem.h
-            line.add(elem)
-            lineH += elem.h
-            # coordinates
-            elem.x1 = nextX
-            elem.x2 = nextX + elem.w - 1
-            elem.y1 = nextY
-            elem.y2 = nextY + elem.h - 1
-            nextY = nextY + elem.h
-            if this.style.spacing > -1:
-              nextY += this.style.spacing
-              lineH += this.style.spacing
-              availH -= this.style.spacing
-            #echo ">  availH ", availH, " this.h ", this.h
-
-          of muPc:
-            elem.h = (origiH.float / (100.float / elem.h_value.float)).floor.int - 1
-
-            if availH - elem.h <= 0:
-              when debug > 1: echo "availH - elem.h < 0: ", availH, " - ", elem.h, " !"
-              if not (this.style.overflow == ofScroll): newColumn()
-
-            availH -= elem.h
-            line.add(elem)
-            lineH += elem.h
-            # coordinates
-            elem.x1 = nextX
-            elem.x2 = nextX + elem.w - 1
-            elem.y1 = nextY
-            elem.y2 = nextY + elem.h - 1
-            nextY = nextY + elem.h
-            if this.style.spacing > -1:
-              nextY += this.style.spacing
-              lineH += this.style.spacing
-              availH -= this.style.spacing
-
-        if lineW < elem.w: lineW = elem.w  #todo
-
-
-
-        when debug > 1:
-          echo elem.name, " w/h: ", elem.w, " / ", elem.h
-          echo elem.name, " x1/x2: ", elem.x1, " / ", elem.x2
-          echo elem.name, " y1,y2: " , elem.y1, " / ", elem.y2
-          echo elem.name, ", padding: ", this.style.padding
-          echo ""
-
-      #todo justify
-      when debug > 1: echo "   Column line.len = ", line.len
-      if line.len > 0: postProcessColumn() # post process last row
-
-      if totalW < origiW: distributeContent() #TODO: scroll
-      #TODO SCROLL
-  proc layoutPass(availWArg, availHArg: int): tuple[w,h:int] =
-    resetState(availWArg, availHArg)
-    mainLayout()
-    result.w = totalW
-    result.h = totalH
-
-  # two-pass scrollbar space reservation
   if this.style.overflow == ofScroll:
-    var (tw, th) = layoutPass(baseAvailW, baseAvailH)
-    var vS = th > baseAvailH # vertical scrollbar needed?
-    var hS = tw > baseAvailW # horizontal scrollbar needed?
-    if vS or hS:
-      var aw = baseAvailW - (if vS: ScrollBarSize else: 0)
-      var ah = baseAvailH - (if hS: ScrollBarSize else: 0)
-      (tw, th) = layoutPass(aw, ah)
-      vS = th > ah # re-check, rarely changes
-      hS = tw > aw
-    this.innerW = tw
-    this.innerH = th
-    result.w = tw
-    result.h = th
+    # two-pass layout: measure with the full area first; if the content
+    # overflows, reserve scrollbar space and measure again so no content
+    # hides behind the scrollbar
+    var (contentW, contentH) = layoutPass(this, layer, state, baseAreaWidth, baseAreaHeight)
+    var needsVerticalScrollbar = contentH > baseAreaHeight
+    var needsHorizontalScrollbar = contentW > baseAreaWidth
+
+    if needsVerticalScrollbar or needsHorizontalScrollbar:
+      let availableWidth = baseAreaWidth - (if needsVerticalScrollbar: ScrollBarSize else: 0)
+      let availableHeight = baseAreaHeight - (if needsHorizontalScrollbar: ScrollBarSize else: 0)
+      (contentW, contentH) = layoutPass(this, layer, state, availableWidth, availableHeight)
+      needsVerticalScrollbar = contentH > availableHeight   # re-check, rarely changes
+      needsHorizontalScrollbar = contentW > availableWidth
+
+    this.innerW = contentW
+    this.innerH = contentH
+    result.w = contentW
+    result.h = contentH
   else:
-    result = layoutPass(baseAvailW, baseAvailH)
+    result = layoutPass(this, layer, state, baseAreaWidth, baseAreaHeight)
 
   this.isRecalculated = true
   when debug > 1: echo " ------ ENDFLEX ------ ", this.name, "\n"
+
+  # recurse into children, so the whole tree gets its coordinates bottom-up
   for elem in layer.elems:
+    elem.redrawFlag = 1
     for elemLayer in elem.layers:
       if elemLayer.recalc != nil:
         (elemLayer.w, elemLayer.h) = elemLayer.recalc(elem, elemLayer)
+
+#------------------------------------------------------------------------------
+# resetState
+#------------------------------------------------------------------------------
+
+proc resetState(this: DivRef, state: var FlexLayout, areaWidth, areaHeight: int) =
+  ## (re)initialise the per-pass layout state.
+  ## `areaWidth`/`areaHeight` are the inner area available this pass
+  ## (already reduced by padding and any reserved scrollbar space).
+  when debug > 1: echo "resetState: BEGIN ", this.name
+  state.remainingWidth = areaWidth
+  state.remainingHeight = areaHeight
+  state.areaWidth = areaWidth
+  state.areaHeight = areaHeight
+  state.nextY = this.y1
+  state.nextX = this.x1
+  if this.style.padding > -1:
+    state.nextY += this.style.padding
+    state.nextX += this.style.padding
+  state.currentLine.setLen(0)
+  state.lineWidth = 0
+  state.lineHeight = 0
+  state.contentWidth = 0
+  state.contentHeight = 0
+  state.article.lines = @[]
+  state.article.lineDims = @[]
+  when debug > 1: echo "resetState: area W x H: ", state.areaWidth, " x ", state.areaHeight
+  when debug > 1: echo "resetState: remaining W x H: ", state.remainingWidth, " x ", state.remainingHeight
+  when debug > 1: echo "resetState: END ", this.name
+
+#------------------------------------------------------------------------------
+# postProcessRow
+#------------------------------------------------------------------------------
+
+#[ 
+  ########   #######   ######  ######## 
+  ##     ## ##     ## ##    ##    ##    
+  ##     ## ##     ## ##          ##    
+  ########  ##     ##  ######     ##    
+  ##        ##     ##       ##    ##    
+  ##        ##     ## ##    ##    ##    
+  ##         #######   ######     ##    
+
+  ########   #######  ##      ##        
+  ##     ## ##     ## ##  ##  ##        
+  ##     ## ##     ## ##  ##  ##        
+  ########  ##     ## ##  ##  ##        
+  ##   ##   ##     ## ##  ##  ##        
+  ##    ##  ##     ## ##  ##  ##        
+  ##     ##  #######   ###  ###         
+ ]#
+
+proc postProcessRow(this: DivRef, state: var FlexLayout) =
+  ## Finalise the current row once its children have been collected:
+  ##   - record it in the article (so distributeContent can align it later)
+  ##   - apply vertical alignItems
+  ##   - grow flexible children horizontally (flexGrow), if there is room
+  ##   - update the content totals
+  when debug > 1: echo "postProcessRow: BEGIN ", this.name
+
+  # the spacing was added after every child except the last; remove the
+  # trailing spacing so the line width is the real content width
+  if this.style.spacing > -1:
+    state.lineWidth -= this.style.spacing
+
+  state.contentHeight += state.lineHeight
+  state.article.lines.add(state.currentLine)
+  state.article.lineDims.add((w: state.lineWidth, h: state.lineHeight,
+                              x: state.nextX, y: state.nextY))
+
+  var
+    flexGrowTotal: int         # sum of flexGrow over all growing children
+    biggestGrowIndex: int = -1 # child with the largest flexGrow (gets the rounding remainder)
+
+  when debug > 2:
+    for elemIndex in 0..state.currentLine.high:
+      echo "postProcessRow: >>>>>> ", $elemIndex, " <<<<<<< "
+
+  for elemIndex in 0..state.currentLine.high:
+    let elem = state.currentLine[elemIndex]
+
+    # muAuto/muStretch rows stretch to the line height
+    case elem.h_unit:
+      of muAuto, muStretch:
+        if state.lineHeight <= 1: # no explicit height yet: stretch to the full row
+          let oldLineHeight = state.lineHeight
+          state.lineHeight = if state.remainingHeight <= 0: state.areaHeight
+                             else: state.remainingHeight
+          elem.h = state.lineHeight
+          elem.y2 += (state.lineHeight - 1)
+          state.contentHeight += (state.lineHeight - oldLineHeight)
+          state.article.lineDims[state.article.lineDims.high].h = state.lineHeight
+        else:
+          elem.h = state.lineHeight
+          elem.y2 += (state.lineHeight - 1)
+      else: discard
+
+    # vertical alignment inside the line
+    case this.style.alignItems:
+      of faiUndefined, faiStart: discard
+      of faiEnd:
+        if elem.h < state.lineHeight:
+          let delta = state.lineHeight - elem.h
+          elem.y1 += delta
+          elem.y2 += delta
+      of faiCenter:
+        if elem.h < state.lineHeight:
+          let delta = (state.lineHeight - elem.h) div 2
+          if delta > 0:
+            elem.y1 += delta
+            elem.y2 += delta
+          when debug > 1:
+            echo elemIndex, " postProcessRow: lineHeight ", state.lineHeight, ", ", elem.h, ", ", elem.name, ", ", delta, ", ", elem.y1
+      of faiStretch:
+        if elem.h < state.lineHeight:
+          let delta = state.lineHeight - elem.h
+          elem.y2 += delta
+          elem.h += delta
+
+    # collect flexGrow info for the grow pass below
+    if elem.style.flexGrow > 0:
+      flexGrowTotal += elem.style.flexGrow
+      if biggestGrowIndex == -1: # first growing child: remember it for the remainder
+        biggestGrowIndex = elemIndex
+      elif elem.style.flexGrow > state.currentLine[biggestGrowIndex].style.flexGrow:
+        biggestGrowIndex = elemIndex
+
+  # grow flexible children to fill the row horizontally
+  if state.lineWidth < state.areaWidth and flexGrowTotal > 0 and
+    this.style.flexGrowFrom <= (state.lineWidth / state.areaWidth * 100).int:
+    when debug > 1:
+      echo "postProcessRow: flexGrowTotal ", flexGrowTotal, " areaWidth ", state.areaWidth, " lineWidth ", state.lineWidth
+
+    let spacePerGrowUnit = if flexGrowTotal > state.areaWidth - state.lineWidth: 1
+                           else: (state.areaWidth - state.lineWidth) div flexGrowTotal
+    when debug > 1: echo "postProcessRow: spacePerGrowUnit ", spacePerGrowUnit
+
+    # integer-division remainder, handed to the biggest-growing child
+    let remainingSpace = if flexGrowTotal > state.areaWidth - state.lineWidth: 0
+                         else: state.areaWidth - (flexGrowTotal * spacePerGrowUnit) - state.lineWidth
+    when debug > 1: echo "postProcessRow: remainingSpace ", remainingSpace
+
+    for elemIndex in 0..state.currentLine.high:
+      if state.lineWidth == state.areaWidth: break # row already filled
+
+      let elem = state.currentLine[elemIndex]
+      if elem.style.flexGrow > 0:
+        var delta = elem.style.flexGrow * spacePerGrowUnit
+        if elemIndex == biggestGrowIndex: # integer-division remainder patch
+          delta += remainingSpace
+        if delta + state.lineWidth > state.areaWidth: # clamp to the available space
+          delta = state.areaWidth - state.lineWidth
+
+        elem.w += delta
+        elem.x2 += delta
+        state.lineWidth += delta
+
+        when debug > 1:
+          echo "postProcessRow: >>> ", elem.name, " ", elem.x1, " ", elem.x2
+
+        # shift the children after this one by the same delta
+        if elemIndex < state.currentLine.high:
+          for followingIndex in elemIndex + 1 .. state.currentLine.high:
+            state.currentLine[followingIndex].x1 += delta
+            state.currentLine[followingIndex].x2 += delta
+
+  # finalise the article entry with the (possibly grown) line width, so
+  # distributeContent sees the real content size. contentHeight is kept up
+  # to date by the muAuto/muStretch branch above.
+  state.contentWidth += state.lineWidth
+  state.article.lineDims[state.article.lineDims.high].w = state.lineWidth
+
+  when debug > 1: echo "postProcessRow: END ", this.name
+
+#------------------------------------------------------------------------------
+# postProcessColumn
+#------------------------------------------------------------------------------
+
+#[ 
+  ########   #######   ######  ######## 
+  ##     ## ##     ## ##    ##    ##    
+  ##     ## ##     ## ##          ##    
+  ########  ##     ##  ######     ##    
+  ##        ##     ##       ##    ##    
+  ##        ##     ## ##    ##    ##    
+  ##         #######   ######     ##    
+ ]#
+
+proc postProcessColumn(this: DivRef, state: var FlexLayout) =
+  ## Finalise the current column once its children have been collected:
+  ##   - apply horizontal alignItems
+  ##   - grow flexible children vertically (flexGrow), if there is room
+  ##   - record the column in the article and update the content totals
+  when debug > 1: echo "postProcessColumn: BEGIN ", this.name
+
+  # trailing spacing, as in postProcessRow
+  if this.style.spacing > -1:
+    state.lineHeight -= this.style.spacing
+
+  var
+    flexGrowTotal: int
+    biggestGrowIndex: int = -1
+
+  for elemIndex in 0..state.currentLine.high:
+    let elem = state.currentLine[elemIndex]
+
+    # horizontal alignment inside the column
+    case this.style.alignItems:
+      of faiUndefined, faiStart: discard
+      of faiEnd:
+        if elem.w < state.lineWidth:
+          let delta = state.lineWidth - elem.w
+          elem.x1 += delta
+          elem.x2 += delta
+      of faiCenter:
+        if elem.w < state.lineWidth:
+          let delta = (state.lineWidth - elem.w) div 2
+          if delta > 0:
+            elem.x1 += delta
+            elem.x2 += delta
+      of faiStretch:
+        if elem.w < state.lineWidth:
+          let delta = state.lineWidth - elem.w
+          elem.x2 += delta
+          elem.w += delta
+
+    # collect flexGrow info for the grow pass below
+    if elem.style.flexGrow > 0:
+      flexGrowTotal += elem.style.flexGrow
+      if biggestGrowIndex == -1: # first growing child: remember it for the remainder
+        biggestGrowIndex = elemIndex
+      elif elem.style.flexGrow > state.currentLine[biggestGrowIndex].style.flexGrow:
+        biggestGrowIndex = elemIndex
+
+  # grow flexible children to fill the column vertically
+  if state.lineHeight < state.areaHeight and flexGrowTotal > 0 and
+    this.style.flexGrowFrom <= (state.lineHeight / state.areaHeight * 100).int:
+    when debug > 1:
+      echo "postProcessColumn: flexGrowFrom ", (state.lineHeight / state.areaHeight * 100).int
+      echo "postProcessColumn: flexGrowTotal ", flexGrowTotal, " areaHeight ", state.areaHeight, " lineHeight ", state.lineHeight
+
+    let spacePerGrowUnit = if flexGrowTotal > state.areaHeight - state.lineHeight: 1
+                           else: (state.areaHeight - state.lineHeight) div flexGrowTotal
+    when debug > 1: echo "postProcessColumn: spacePerGrowUnit ", spacePerGrowUnit
+
+    # integer-division remainder, handed to the biggest-growing child
+    let remainingSpace = if flexGrowTotal > state.areaHeight - state.lineHeight: 0
+                         else: state.areaHeight - (flexGrowTotal * spacePerGrowUnit) - state.lineHeight
+    when debug > 1: echo "postProcessColumn: remainingSpace ", remainingSpace
+
+    for elemIndex in 0..state.currentLine.high:
+      if state.lineHeight == state.areaHeight: break # column already filled
+
+      let elem = state.currentLine[elemIndex]
+      if elem.style.flexGrow > 0:
+        var delta = elem.style.flexGrow * spacePerGrowUnit
+        if elemIndex == biggestGrowIndex: # integer-division remainder patch
+          delta += remainingSpace
+        if delta + state.lineHeight > state.areaHeight: # clamp to the available space
+          delta = state.areaHeight - state.lineHeight
+
+        elem.h += delta
+        elem.y2 += delta
+        state.lineHeight += delta
+
+        when debug > 1:
+          echo "postProcessColumn>>> ", elem.name, " y1 ", elem.y1, " y2 ", elem.y2
+          echo "postProcessColumn>>>  x1 ", elem.x1, " x2 ", elem.x2
+
+        # shift the children after this one down by the same delta
+        if elemIndex < state.currentLine.high:
+          for followingIndex in elemIndex + 1 .. state.currentLine.high:
+            state.currentLine[followingIndex].y1 += delta
+            state.currentLine[followingIndex].y2 += delta
+
+  # finalise the article entry with the (possibly grown) line size, so
+  # distributeContent sees the real content size (a stale contentHeight here
+  # made distributeContent falsely vertical-center the content).
+  state.contentWidth += state.lineWidth
+  state.contentHeight += state.lineHeight # content height (needed for scrollables)
+  state.article.lines.add(state.currentLine)
+  state.article.lineDims.add((w: state.lineWidth, h: state.lineHeight,
+                              x: state.nextX, y: state.nextY))
+
+  when debug > 1: echo "postProcessColumn: END ", this.name
+
+#------------------------------------------------------------------------------
+# newRow / newColumn
+#------------------------------------------------------------------------------
+
+#[ 
+8b  8 8888 Yb        dP 8    888 8b  8 8888 
+8Ybm8 8www  Yb  db  dP  8     8  8Ybm8 8www 
+8  "8 8      YbdPYbdP   8     8  8  "8 8    
+8   8 8888    YP  YP    8888 888 8   8 8888 
+ ]#
+
+proc newRow(this: DivRef, state: var FlexLayout) =
+  ## End the current row (if any) and start a new one below it.
+  when debug > 1: echo "newRow: line.len ", state.currentLine.len
+  if state.currentLine.len > 0:
+    postProcessRow(this, state)
+
+  state.remainingWidth = state.areaWidth     # a new row has the full width again
+  state.remainingHeight -= state.lineHeight  # the new row sits one line lower
+
+  state.nextY = state.nextY + state.lineHeight - 1
+  if this.style.spacing > -1:
+    state.nextY += this.style.spacing
+
+  state.nextX = this.x1
+  if this.style.padding > -1:
+    state.nextX += this.style.padding
+
+  state.lineWidth = 0
+  state.lineHeight = 0
+  state.currentLine.setLen(0)
+
+proc newColumn(this: DivRef, state: var FlexLayout) =
+  ## End the current column (if any) and start a new one to its right.
+  when debug > 1: echo "newColumn: line.len ", state.currentLine.len
+  if state.currentLine.len > 0:
+    postProcessColumn(this, state)
+
+  state.remainingHeight = state.areaHeight    # a new column has the full height again
+  state.remainingWidth -= state.lineWidth     # the new column sits one column to the right
+
+  state.nextY = this.y1
+  if this.style.padding > -1:
+    state.nextY += this.style.padding
+
+  state.nextX = state.nextX + state.lineWidth - 1
+  if this.style.spacing > -1:
+    state.nextX += this.style.spacing
+
+  state.lineHeight = 0
+  state.lineWidth = 0
+  state.currentLine.setLen(0)
+
+#------------------------------------------------------------------------------
+# distributeContent
+#------------------------------------------------------------------------------
+
+#[ 
+  ########  ####  ######  ######## 
+  ##     ##  ##  ##    ##    ##    
+  ##     ##  ##  ##          ##    
+  ##     ##  ##   ######     ##    
+  ##     ##  ##        ##    ##    
+  ##     ##  ##  ##    ##    ##    
+  ########  ####  ######     ##    
+ ]#
+
+proc distributeContent(this: DivRef, state: var FlexLayout) =
+  ## Distribute the finished lines/columns inside the container.
+  ## This is flex-alignContent, but the author prefers "distribute".
+  ##
+  ## For fdRow:   alignContent spreads the rows vertically;
+  ##              justifyContent spreads each row's content horizontally.
+  ## For fdColumn: alignContent spreads the columns horizontally;
+  ##              justifyContent spreads each column's content vertically.
+  when debug > 1: echo "distributeContent: BEGIN ", this.name
+
+  # nothing was laid out
+  if state.article.lines.len == 0:
+    when debug > 0: echo "distributeContent: article.lines.len == 0   RETURN"
+    return
+
+  var
+    newY: int      # temporary cursor (row facEnd)
+    delta: int     # how far to shift one line/element
+    remainder: int # integer-division leftover, handed out one pixel at a time
+
+  #--------------------------------------------------------------
+  # fdRow: lines flow horizontally
+  #--------------------------------------------------------------
+  if this.style.flexDirection == fdRow:
+
+    # if the content overflows, it will scroll: nothing to distribute
+    if state.contentHeight > state.areaHeight:
+      when debug > 0:
+        echo "distributeContent: contentHeight > areaHeight ", state.contentHeight, " > ", state.areaHeight, " RETURN"
+      return
+
+    case this.style.alignContent: #* align rows vertically in the parent
+      of facUndefined, facStart: discard
+
+      of facEnd: #TODO: scroll ?!
+        # pack the rows against the inner bottom edge (this.y2 - padding)
+        let contentBottom = (if this.style.padding > -1: max(this.y1, this.y2 - this.style.padding)
+                             else: this.y2)
+        newY = contentBottom
+        for lineIndex in countdown(state.article.lines.high, 0):
+          newY -= (state.article.lineDims[lineIndex].h - 1)
+          delta = newY - state.article.lineDims[lineIndex].y
+          for elem in state.article.lines[lineIndex]:
+            elem.y1 += delta
+            elem.y2 += delta
+
+      of facCenter:
+        when debug > 1:
+          echo "distributeContent: row alignContent facCenter"
+          echo state.areaHeight, " - ", state.contentHeight, " div 2 = ", (state.areaHeight - state.contentHeight) div 2
+        delta = (state.areaHeight - state.contentHeight) div 2
+        if delta > 1:
+          for lineIndex in countdown(state.article.lines.high, 0):
+            for elem in state.article.lines[lineIndex]:
+              elem.y1 += delta
+              elem.y2 += delta
+
+      of facStretch: #TODO TEST
+        # each row grows by an equal share of the free height, so the rows
+        # together fill the container
+        delta = (state.areaHeight - state.contentHeight) div state.article.lines.len
+        remainder = state.areaHeight - (delta * state.article.lines.len) # rounding patch
+
+        var offset = 0 # cumulative vertical shift applied to later rows
+        for lineIndex in 0..state.article.lines.high:
+          let grow = delta + (if remainder > 0: 1 else: 0) # rounding patch
+          if remainder > 0: remainder -= 1
+
+          state.article.lineDims[lineIndex].h += grow
+          state.article.lineDims[lineIndex].y += offset
+
+          for elem in state.article.lines[lineIndex]:
+            elem.y1 += offset          # shift down by previous rows' growth
+            elem.h += grow             # stretch to the new row height
+            elem.y2 += offset + grow   # both shift and stretch
+          offset += grow
+
+      of facSpaceBetween:
+        if state.article.lines.len > 1:
+          delta = (state.areaHeight - state.contentHeight) div (state.article.lines.len - 1) #! -1 (4 rows have 3 gaps)
+          remainder = (state.areaHeight - state.contentHeight) - (delta * (state.article.lines.len - 1))
+
+          for lineIndex in 1..state.article.lines.high: # starts at 1: no gap above the first row
+            for elem in state.article.lines[lineIndex]:
+              elem.y1 += delta * lineIndex
+              elem.y2 += delta * lineIndex
+              if remainder > 0:
+                elem.y1 += lineIndex
+                elem.y2 += lineIndex
+            remainder -= 1
+
+      of facSpaceAround:
+        if state.article.lines.len > 1:
+          delta = (state.areaHeight - state.contentHeight) div (state.article.lines.len + 1)
+          remainder = state.areaHeight - (delta * (state.article.lines.len + 1))
+
+          for lineIndex in 0..state.article.lines.high:
+            for elem in state.article.lines[lineIndex]:
+              elem.y1 += delta * (lineIndex + 1)
+              elem.y2 += delta * (lineIndex + 1)
+              if remainder > 0:
+                elem.y1 += (lineIndex + 1)
+                elem.y2 += (lineIndex + 1)
+            remainder -= 1
+
+    #[ 
+    88888 88   88 .dP"Y8 888888 88 888888 Yb  dP 
+        88 88   88 `Ybo."   88   88 88__    YbdP  
+    o.  88 Y8   8P o.`Y8b   88   88 88""     8P   
+    "bodP' `YbodP' 8bodP'   88   88 88      dP    
+
+    88""Yb  dP"Yb  Yb        dP                   
+    88__dP dP   Yb  Yb  db  dP                    
+    88"Yb  Yb   dP   YbdPYbdP                     
+    88  Yb  YbodP     YP  YP                      
+    ]#
+
+    # horizontal distribution of each row's content
+    if state.contentWidth < state.areaWidth: # else the content scrolls
+      case this.style.justifyContent: #* align rows horizontally in the parent
+        of fjcUndefined, fjcStart: discard
+
+        of fjcEnd:
+          for lineIndex in 0..state.article.lines.high:
+            delta = state.areaWidth - state.article.lineDims[lineIndex].w
+            for elem in state.article.lines[lineIndex]:
+              elem.x1 += delta
+              elem.x2 += delta
+
+        of fjcCenter:
+          for lineIndex in 0..state.article.lines.high:
+            delta = (state.areaWidth - state.article.lineDims[lineIndex].w) div 2
+            if delta > 1:
+              for elem in state.article.lines[lineIndex]:
+                elem.x1 += delta
+                elem.x2 += delta
+
+  #--------------------------------------------------------------
+  # fdColumn: lines flow vertically
+  #--------------------------------------------------------------
+  if this.style.flexDirection == fdColumn:
+    when debug > 1: echo "distributeContent: fdColumn"
+
+    # horizontal distribution of the columns (if the content does not scroll)
+    if state.contentWidth < state.areaWidth:
+      case this.style.alignContent: #* align columns horizontally in the parent
+        of facUndefined, facStart: discard
+
+        of facCenter:
+          when debug > 1: echo ">>> distributeContent: fdColumn facCenter <<<"
+          delta = (state.areaWidth - state.contentWidth) div 2
+          remainder = (state.areaWidth - state.contentWidth) - (delta * 2)
+          for lineIndex in 0..state.article.lines.high:
+            for elem in state.article.lines[lineIndex]:
+              elem.x1 += delta
+              elem.x2 += delta
+              if remainder > 0:
+                elem.x1 += 1
+                elem.x2 += 1
+            remainder -= 1
+
+        of facSpaceBetween:
+          if state.article.lines.len > 1:
+            delta = (state.areaWidth - state.contentWidth) div (state.article.lines.len - 1)
+            remainder = (state.areaWidth - state.contentWidth) - (delta * (state.article.lines.len - 1))
+            var offset = 0
+            for lineIndex in 0..state.article.lines.high:
+              if lineIndex > 0:
+                offset += delta
+                if remainder > 0:
+                  offset += 1
+                  remainder -= 1
+              for elem in state.article.lines[lineIndex]:
+                elem.x1 += offset
+                elem.x2 += offset
+          else: # single column: center it (same as facCenter)
+            delta = (state.areaWidth - state.contentWidth) div 2
+            remainder = (state.areaWidth - state.contentWidth) - (delta * 2)
+            for elem in state.article.lines[0]:
+              elem.x1 += delta
+              elem.x2 += delta
+              if remainder > 0:
+                elem.x1 += 1
+                elem.x2 += 1
+
+        of facSpaceAround:
+          if state.article.lines.len > 1:
+            delta = (state.areaWidth - state.contentWidth) div (state.article.lines.len + 1)
+            remainder = (state.areaWidth - state.contentWidth) - (delta * (state.article.lines.len + 1))
+          elif state.article.lines.len == 1: # single line: treat like facCenter
+            delta = (state.areaWidth - state.contentWidth) div 2
+            remainder = (state.areaWidth - state.contentWidth) - (delta * 2)
+          var gapIndex = 0
+          for lineIndex in 0..state.article.lines.high:
+            gapIndex += 1
+            for elem in state.article.lines[lineIndex]:
+              elem.x1 += delta * gapIndex
+              elem.x2 += delta * gapIndex
+              if remainder > 0:
+                elem.x1 += 1
+                elem.x2 += 1
+            remainder -= 1
+
+        of facStretch:
+          delta = (state.areaWidth - state.contentWidth) div state.article.lines.len
+          remainder = (state.areaWidth - state.contentWidth) - (delta * state.article.lines.len)
+          for lineIndex in 0..state.article.lines.high:
+            state.article.lineDims[lineIndex].w += delta
+            if remainder > 0: state.article.lineDims[lineIndex].w += 1
+            for elem in state.article.lines[lineIndex]:
+              elem.x1 += lineIndex * delta
+              elem.x2 += lineIndex * delta + delta
+              elem.w += delta
+              if remainder > 0:
+                elem.x2 += 1
+                elem.w += 1
+            remainder -= 1
+
+        of facEnd:
+          delta = (state.areaWidth - state.contentWidth)
+          for lineIndex in 0..state.article.lines.high:
+            for elem in state.article.lines[lineIndex]:
+              elem.x1 += delta
+              elem.x2 += delta
+
+    #[ 
+     88888 88   88 .dP"Y8 888888 88 888888 Yb  dP  
+        88 88   88 `Ybo."   88   88 88__    YbdP   
+    o.  88 Y8   8P o.`Y8b   88   88 88""     8P    
+    "bodP' `YbodP' 8bodP'   88   88 88      dP     
+
+     dP""b8  dP"Yb  88     88   88 8b    d8 88b 88 
+    dP   `" dP   Yb 88     88   88 88b  d88 88Yb88 
+    Yb      Yb   dP 88  .o Y8   8P 88YbdP88 88 Y88 
+     YboodP  YbodP  88ood8 `YbodP' 88 YY 88 88  Y8 
+    ]#
+
+    # vertical distribution of each column's content (if it does not scroll)
+    if state.contentHeight < state.areaHeight:
+      case this.style.justifyContent: #* align columns vertically in the parent
+        of fjcUndefined, fjcStart: discard
+
+        of fjcEnd:
+          for lineIndex in 0..state.article.lines.high:
+            delta = state.areaHeight - state.article.lineDims[lineIndex].h
+            for elem in state.article.lines[lineIndex]:
+              elem.y1 += delta
+              elem.y2 += delta
+
+        of fjcCenter:
+          when debug > 1: echo ">>> distributeContent: fdColumn fjcCenter <<<"
+          for lineIndex in 0..state.article.lines.high:
+            delta = (state.areaHeight - state.article.lineDims[lineIndex].h) div 2
+            for elem in state.article.lines[lineIndex]:
+              elem.y1 += delta
+              elem.y2 += delta
+
+  when debug > 1: echo "distributeContent: END ", this.name
+
+#------------------------------------------------------------------------------
+# mainLayout
+#------------------------------------------------------------------------------
+
+#[ 
+     ######  ########    ###    ########  ######## 
+    ##    ##    ##      ## ##   ##     ##    ##    
+    ##          ##     ##   ##  ##     ##    ##    
+     ######     ##    ##     ## ########     ##    
+          ##    ##    ######### ##   ##      ##    
+    ##    ##    ##    ##     ## ##    ##     ##    
+     ######     ##    ##     ## ##     ##    ##    
+ ]#
+
+proc mainLayout(this: DivRef, layer: Layer, state: var FlexLayout) =
+  ## The core layout loop. Iterate the layer's children, size each one from
+  ## its w_unit/h_unit, place it, and break into new lines (fdRow) or
+  ## columns (fdColumn) as needed. Flex-grow and line distribution happen
+  ## in postProcessRow/Column and distributeContent, after the loop.
+  when debug > 1: echo "mainLayout: BEGIN ", this.name
+
+  if this.style.flexDirection == fdRow: #! ---- fdRow: children flow left -> right
+    when debug > 1: echo "##### mainLayout: flexDirection == fdRow"
+
+    for elem in layer.elems:
+
+      if elem of BRElem: # explicit line break
+        newRow(this, state)
+        continue
+
+      # ---- measure the child's height ----
+      case elem.h_unit:
+        of muAuto, muStretch:
+          elem.h = 1 # grow to the line height later in postProcessRow
+        of muPx:
+          elem.h = elem.h_value
+          if elem.window.scale != 1.0: elem.h = (elem.h.float * elem.window.scale).int
+        of muPc:
+          elem.h = (state.areaHeight.float / (100.float / elem.h_value.float)).floor.int - 1
+
+      # ---- measure the child's width and place it ----
+      case elem.w_unit:
+        of muAuto, muStretch:
+          # take the remaining width. Not the same as justify-stretch:
+          # useful for the last element in a row; for several elements,
+          # use flexGrow instead.
+          elem.w = state.remainingWidth
+          state.currentLine.add(elem)
+          # coordinates
+          elem.x1 = state.nextX
+          elem.x2 = state.nextX + elem.w - 1
+          elem.y1 = state.nextY
+          elem.y2 = state.nextY + elem.h - 1
+          state.lineWidth += elem.w
+          newRow(this, state)
+
+        of muPx:
+          elem.w = elem.w_value
+          if elem.window.scale != 1.0: elem.w = (elem.w.float * elem.window.scale).int
+
+          if state.remainingWidth - elem.w < 0: # does not fit: wrap to a new row (unless scrolling)
+            if not (this.style.overflow == ofScroll): newRow(this, state)
+
+          state.lineWidth += elem.w
+          state.remainingWidth -= elem.w
+          state.currentLine.add(elem)
+          # coordinates
+          elem.x1 = state.nextX
+          elem.x2 = state.nextX + elem.w - 1
+          elem.y1 = state.nextY
+          elem.y2 = state.nextY + elem.h - 1
+          state.nextX = state.nextX + elem.w
+          if this.style.spacing > -1:
+            state.nextX += this.style.spacing
+            state.lineWidth += this.style.spacing
+            state.remainingWidth -= this.style.spacing
+
+        of muPc:
+          elem.w = (state.areaWidth.float / (100.float / elem.w_value.float)).floor.int - 1
+
+          if state.remainingWidth - elem.w <= 0: # does not fit: wrap to a new row (unless scrolling)
+            if not (this.style.overflow == ofScroll): newRow(this, state)
+
+          state.lineWidth += elem.w
+          state.remainingWidth -= elem.w
+          state.currentLine.add(elem)
+          # coordinates
+          elem.x1 = state.nextX
+          elem.x2 = state.nextX + elem.w - 1
+          elem.y1 = state.nextY
+          elem.y2 = state.nextY + elem.h - 1
+          state.nextX = state.nextX + elem.w
+          if this.style.spacing > -1:
+            state.nextX += this.style.spacing
+            state.lineWidth += this.style.spacing
+            state.remainingWidth -= this.style.spacing
+
+          when debug > 1: echo "row muPc ", elem.w_value, "->", elem.w, " remainingWidth: ", state.remainingWidth
+
+      # keep the line height equal to the tallest child
+      if state.lineHeight < elem.h: state.lineHeight = elem.h
+
+      when debug > 1:
+        echo elem.name, " flex w/h: ", elem.w, " / ", elem.h
+        echo elem.name, " flex x1,y1: ", elem.x1, ", ", elem.y1
+        echo elem.name, " flex x2,y2: ", elem.x2, ", ", elem.y2
+        echo elem.name, ", padding: ", this.style.padding
+        echo ""
+
+    if state.currentLine.len > 0: postProcessRow(this, state) # finalise the last row
+
+    if state.contentHeight < state.areaHeight or state.contentWidth < state.areaWidth:
+      distributeContent(this, state)
+
+    #TODO SCROLL
+
+  #!................................ fdColumn (and fdUndefined, ~ fdColumn)
+  elif this.style.flexDirection == fdColumn or
+       this.style.flexDirection == fdUndefined:
+    ## calculate children positions vertically
+    when debug > 1: echo "mainLayout: flexDirection == fdColumn ", this.name
+
+    for elem in layer.elems:
+
+      if elem of BRElem: # explicit column break
+        newColumn(this, state)
+        continue
+
+      # ---- measure the child's width ----
+      case elem.w_unit:
+        of muAuto, muStretch:
+          elem.w = state.remainingWidth
+        of muPx:
+          elem.w = elem.w_value
+          if elem.window.scale != 1.0: elem.w = (elem.w.float * elem.window.scale).int
+        of muPc:
+          elem.w = (state.areaWidth.float / (100.float / elem.w_value.float)).floor.int - 1
+
+      # keep the column width equal to the widest child
+      if state.lineWidth < elem.w: state.lineWidth = elem.w
+
+      # ---- measure the child's height and place it ----
+      case elem.h_unit:
+        of muAuto, muStretch:
+          when debug > 1: echo "muStretch"
+          elem.h = state.remainingHeight
+          state.currentLine.add(elem)
+          state.remainingHeight -= elem.h
+          state.lineHeight += elem.h
+          # coordinates
+          elem.x1 = state.nextX
+          elem.x2 = state.nextX + elem.w - 1
+          elem.y1 = state.nextY
+          elem.y2 = state.nextY + elem.h - 1
+          state.nextY = state.nextY + elem.h
+          newColumn(this, state)
+
+        of muPx:
+          elem.h = elem.h_value
+          if elem.window.scale != 1.0: elem.h = (elem.h.float * elem.window.scale).int
+
+          if state.remainingHeight - elem.h < 0: # does not fit: wrap to a new column (unless scrolling)
+            when debug > 1: echo "remainingHeight - elem.h < 0: ", state.remainingHeight, " - ", elem.h, " !"
+            if not (this.style.overflow == ofScroll): newColumn(this, state)
+
+          state.remainingHeight -= elem.h
+          state.currentLine.add(elem)
+          state.lineHeight += elem.h
+          # coordinates
+          elem.x1 = state.nextX
+          elem.x2 = state.nextX + elem.w - 1
+          elem.y1 = state.nextY
+          elem.y2 = state.nextY + elem.h - 1
+          state.nextY = state.nextY + elem.h
+          if this.style.spacing > -1:
+            state.nextY += this.style.spacing
+            state.lineHeight += this.style.spacing
+            state.remainingHeight -= this.style.spacing
+
+        of muPc:
+          elem.h = (state.areaHeight.float / (100.float / elem.h_value.float)).floor.int - 1
+
+          if state.remainingHeight - elem.h <= 0: # does not fit: wrap to a new column (unless scrolling)
+            when debug > 1: echo "remainingHeight - elem.h < 0: ", state.remainingHeight, " - ", elem.h, " !"
+            if not (this.style.overflow == ofScroll): newColumn(this, state)
+
+          state.remainingHeight -= elem.h
+          state.currentLine.add(elem)
+          state.lineHeight += elem.h
+          # coordinates
+          elem.x1 = state.nextX
+          elem.x2 = state.nextX + elem.w - 1
+          elem.y1 = state.nextY
+          elem.y2 = state.nextY + elem.h - 1
+          state.nextY = state.nextY + elem.h
+          if this.style.spacing > -1:
+            state.nextY += this.style.spacing
+            state.lineHeight += this.style.spacing
+            state.remainingHeight -= this.style.spacing
+
+      # keep the column width equal to the widest child
+      if state.lineWidth < elem.w: state.lineWidth = elem.w
+
+      when debug > 1:
+        echo elem.name, " w/h: ", elem.w, " / ", elem.h
+        echo elem.name, " x1/x2: ", elem.x1, " / ", elem.x2
+        echo elem.name, " y1,y2: ", elem.y1, " / ", elem.y2
+        echo elem.name, ", padding: ", this.style.padding
+        echo ""
+
+    when debug > 1: echo "   Column line.len = ", state.currentLine.len
+    if state.currentLine.len > 0: postProcessColumn(this, state) # finalise the last column
+
+    if state.contentWidth < state.areaWidth: distributeContent(this, state)
+
+    #TODO SCROLL
+
+  when debug > 1: echo "mainLayout: END ", this.name
+
+#------------------------------------------------------------------------------
+# layoutPass
+#------------------------------------------------------------------------------
+
+proc layoutPass(this: DivRef, layer: Layer, state: var FlexLayout,
+                areaWidth, areaHeight: int): tuple[w, h: int] =
+  ## Run one full layout pass with the given inner area, returning the
+  ## content size (which may exceed the area when the content scrolls).
+  resetState(this, state, areaWidth, areaHeight)
+  mainLayout(this, layer, state)
+  result.w = state.contentWidth
+  result.h = state.contentHeight

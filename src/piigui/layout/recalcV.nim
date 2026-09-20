@@ -53,6 +53,7 @@ proc recalcV*(this: DivRef, layer:Layer):tuple[w,h:int]=
         elem.w = this.w
       of muPx:
         elem.w = elem.w_value
+        if elem.window.scale != 1.0: elem.w = (elem.w.float * elem.window.scale).int
       of muPc:
         elem.w = (thisW.float * elem.w_value.float / 100.0).int
 
@@ -61,6 +62,7 @@ proc recalcV*(this: DivRef, layer:Layer):tuple[w,h:int]=
         countAutoHElems += 1
       of muPx:
         elem.h = elem.h_value
+        if elem.window.scale != 1.0: elem.h = (elem.h.float * elem.window.scale).int
         availH -= elem.h
         #countAutoHElems += 1
       of muPc:
@@ -122,6 +124,7 @@ proc recalcV*(this: DivRef, layer:Layer):tuple[w,h:int]=
   # recursively calc
 
   for elem in layer.elems:
+    elem.redrawFlag = 1
     for elemLayer in elem.layers:
       if elemLayer.recalc != nil:
         (elemLayer.w, elemLayer.h) = elemLayer.recalc(elem, elemLayer)

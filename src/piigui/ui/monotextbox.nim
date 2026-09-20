@@ -191,9 +191,10 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
       echo "___________"
 
     #.............................
-    # clipRect hides overflow (intersection of all ancestors' rects)
+    # clipRect (screen coordinates) hides overflow: the intersection of all
+    # ancestors' on-screen rects. It must clip ONLY the final on-screen copy,
+    # not the texture-local rendering below.
     var clipRect = visibleClipRect(this, scrollXArg, scrollYArg)
-    discard sdl.setClipRect(this.pgui.renderer, clipRect.addr)
     #.............................
 
     # canvasRect is the rect we can paint
@@ -219,6 +220,7 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
     #.............................
     # we need to redraw, even if not changed
     if this.redrawFlag == 0 and this.textureCache != nil:
+        discard sdl.setClipRect(this.pgui.renderer, clipRect.addr)
         discard this.pgui.renderer.copy(
             this.textureCache,
             nil, screenRect.addr)
@@ -229,14 +231,15 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
     else:
       # if need to redraw, check if cache setted up
       # todo setup cahce at recalc
-      if this.textureCache == nil:
-        this.textureCache = sdl.createTexture(
-          this.pgui.renderer,
-          sdl.SDL_PIXELFORMAT_UNKNOWN,#PIXELFORMAT_RGBA8888,
-          sdl.SDL_TEXTUREACCESS_TARGET,
-          this.w.cint,
-          this.h.cint)
-        discard this.textureCache.setTextureBlendMode(sdl.BLENDMODE_BLEND)
+      if this.textureCache != nil:
+        sdl.destroyTexture(this.textureCache)
+      this.textureCache = sdl.createTexture(
+        this.pgui.renderer,
+        sdl.SDL_PIXELFORMAT_UNKNOWN,#PIXELFORMAT_RGBA8888,
+        sdl.SDL_TEXTUREACCESS_TARGET,
+        this.w.cint,
+        this.h.cint)
+      discard this.textureCache.setTextureBlendMode(sdl.BLENDMODE_BLEND)
 
       # the elems. texture is the render target x=0 y=0!
       discard sdl.setRenderTarget(this.pgui.renderer, this.textureCache)
@@ -328,6 +331,8 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
 
       #=====================================
       discard sdl.setRenderTarget(this.pgui.renderer, nil)
+      # clip only the screen-space copy
+      discard sdl.setClipRect(this.pgui.renderer, clipRect.addr)
       discard this.pgui.renderer.copy(
           this.textureCache,
           nil, screenRect.addr)

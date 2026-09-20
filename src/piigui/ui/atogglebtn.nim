@@ -132,9 +132,10 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
     const debug = 0b0
 
     # .............................
-    # clipRect hides overflow (intersection of all ancestors' rects)
+    # clipRect (screen coordinates) hides overflow: the intersection of all
+    # ancestors' on-screen rects. It must clip ONLY the final on-screen copy,
+    # not the texture-local rendering below.
     var clipRect = visibleClipRect(this, scrollXArg, scrollYArg)
-    discard sdl.setClipRect(this.window.renderer, clipRect.addr)
     # .............................
 
     # canvasRect is the rect we can paint
@@ -160,6 +161,7 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
     # .............................
     #! we need to redraw, even if not changed
     if this.redrawFlag == 0 and this.textureCache != nil:
+        discard sdl.setClipRect(this.window.renderer, clipRect.addr)
         discard this.window.renderer.copy(
             this.textureCache,
             nil, screenRect.addr)
@@ -169,14 +171,15 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
       # if need to re-render
       # check if cache setted up
       # todo setup cache at recalc
-      if this.textureCache == nil:
-        this.textureCache = sdl.createTexture(
-          this.window.renderer,
-          sdl.SDL_PIXELFORMAT_UNKNOWN,#PIXELFORMAT_RGBA8888,
-          sdl.SDL_TEXTUREACCESS_TARGET,
-          this.w,
-          this.h)
-        discard this.textureCache.setTextureBlendMode(sdl.BLENDMODE_BLEND)
+      if this.textureCache != nil:
+        sdl.destroyTexture(this.textureCache)
+      this.textureCache = sdl.createTexture(
+        this.window.renderer,
+        sdl.SDL_PIXELFORMAT_UNKNOWN,#PIXELFORMAT_RGBA8888,
+        sdl.SDL_TEXTUREACCESS_TARGET,
+        this.w,
+        this.h)
+      discard this.textureCache.setTextureBlendMode(sdl.BLENDMODE_BLEND)
 
       # the elems. texture is the render target x=0 y=0!
       discard sdl.setRenderTarget(this.window.renderer, this.textureCache)
@@ -290,6 +293,8 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
       #! IMPORTANT
       # release rendertarget
       discard sdl.setRenderTarget(this.window.renderer, nil)
+      # clip only the screen-space copy
+      discard sdl.setClipRect(this.window.renderer, clipRect.addr)
       # copy texture to its place
       discard this.window.renderer.copy(
           this.textureCache,
