@@ -25,8 +25,8 @@ var gui = newSimpleGui("recalcV test", windowW = 800, windowH = 600)
 gui.rootElem.setPadding(10)
 gui.rootElem.setBackGroundColor(0x404040FF.HexColor)
 
-defaultSST["lightgray"] = newStyleSheet()
-defaultSST["lightgray"].backGroundColor = (r:210, g:210, b:210, a:255)
+rootSSRT["lightgray"] = newStyleSheet()
+rootSSRT["lightgray"].backGroundColor = (r:210, g:210, b:210, a:255)
 
 randomize()
 

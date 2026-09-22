@@ -188,10 +188,10 @@ proc default_onFocus*(this:DivRef){.nosinks.}=
 
     #setDefaultStyle(this) # remove :hover
     this.pgui.hoverElem = nil
-    setActiveStyle(this,"focus")
+    setActiveStyle(this,"focus", true)
     
     if this.pgui.focusElem != nil: # prev focused elem blur
-      this.pgui.focusElem.setDefaultStyle()
+      this.pgui.focusElem.setDefaultStyle(true)
       if this.pgui.focusElem.onBlur != nil:
         this.pgui.focusElem.onBlur(this.pgui.focusElem)
     
@@ -426,7 +426,7 @@ proc drawDivRef*(this:DivRef, scrollX, scrollY:int)=
 
     # the elems. texture is the render target x=0 y=0!
     discard sdl.setRenderTarget(this.pgui.renderer, this.textureCache)
-    this.pgui.renderer.setDrawColor(clearColor)
+    this.pgui.renderer.setDrawColor(transparentColor)
     #discard this.pgui.renderer.clear()
     #.............................
 
@@ -544,7 +544,6 @@ proc newDiv*(parent: DivRef,
   if parent != nil:
     result.pgui = parent.pgui
     result.window = parent.window
-    result.nthChild = parent.layers[layer].elems.len
 
 
   result.layers = @[]
@@ -572,8 +571,8 @@ proc newDiv*(parent: DivRef,
   result.styleCache = newTable[string, StyleSheetRef](4)
   
   for style in styles:
-    if defaultSST.contains(style):
-      result.styles.add((style, defaultSST[style]))
+    if rootSSRT.contains(style):
+      result.styles.add((style, rootSSRT[style]))
 
   result.activeStyle = "default"
   recalcStyle(result) #* the default RootStyle applied here
@@ -781,7 +780,7 @@ proc newRoot*(
   result.inlineStyle = newStyleSheet()
   result.styleCache = newTable[string, StyleSheetRef](4)
   for style in styles:
-    result.styles.add((style, defaultSST[style]))
+    result.styles.add((style, rootSSRT[style]))
   result.activeStyle = "default"
   recalcStyle(result)
 
@@ -1250,7 +1249,6 @@ proc copyElem*(this:DivRef, dest:DivRef, layerNum: int = 0)=
   this.parent = dest
   this.window = dest.window
   changeWindowRecursive(this, dest.window)
-  dest.layers[layerNum].renumberNthChild()
   recalcStyle(dest,true)
   recalcDOM(dest)
 
@@ -1260,7 +1258,6 @@ proc removeElem*(layer: Layer, elem: DivRef)=
       if layer.elems[i] == elem:
         layer.elems.delete(i)
         break
-  layer.renumberNthChild()
 
 proc removeElem*(elem: DivRef)=
   ## removes elem from its parent's layer using the stored layer index

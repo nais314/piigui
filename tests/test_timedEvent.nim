@@ -24,12 +24,12 @@ gui.rootElem.setBackGroundColor(0x6B859C.HexColor)
 gui.rootElem.inlineStyle.alignContent = facCenter
 gui.rootElem.inlineStyle.justifyContent = fjcCenter
 
-defaultSST["blinkBtn"] = newStyleSheet()
-defaultSST["blinkBtn"].setBackGroundColor(0x2266CCFF.HexColor)
-defaultSST["blinkBtn"].setColor(0xFFFFFFFF.HexColor)
-defaultSST["blinkBtn"].addNewPseudoStyle("blink")
-defaultSST["blinkBtn"].pseudoStyles["blink"].setBackGroundColor(0xCC2222FF.HexColor)
-defaultSST["blinkBtn"].pseudoStyles["blink"].setColor(0xFFFFFFFF.HexColor)
+rootSSRT["blinkBtn"] = newStyleSheet()
+rootSSRT["blinkBtn"].setBackGroundColor(0x2266CCFF.HexColor)
+rootSSRT["blinkBtn"].setColor(0xFFFFFFFF.HexColor)
+rootSSRT["blinkBtn"].addNewPseudoStyle("blink")
+rootSSRT["blinkBtn"].pseudoStyles["blink"].setBackGroundColor(0xCC2222FF.HexColor)
+rootSSRT["blinkBtn"].pseudoStyles["blink"].setColor(0xFFFFFFFF.HexColor)
 
 let blinkBtn = gui.rootElem.newDosBtn(
   name = "blinkBtn",

@@ -12,7 +12,8 @@ import piigui/layout/recalcV as recalcVMod
 import tables
 import locks
 
-###########################################
+#######################################################
+
 
 ##[
     i dont create the option for multiple stylesheets,
@@ -25,16 +26,17 @@ import locks
 # TODO: add default hover style, and add to controlls!
 
 
+#######################################################
 
-###########################################
+
 #[ 
-##        ######   ######  ######## 
- ##      ##    ## ##    ##    ##    
-  ##     ##       ##          ##    
-   ##     ######   ######     ##    
-  ##           ##       ##    ##    
- ##      ##    ## ##    ##    ##    
-##        ######   ######     ##    
+       ######   ######  ########  ######## 
+      ##    ## ##    ## ##     ##    ##    
+      ##       ##       ##     ##    ##    
+       ######   ######  ########     ##    
+            ##       ## ##   ##      ##    
+      ##    ## ##    ## ##    ##     ##    
+       ######   ######  ##     ##    ##     
 ]#
 
 
@@ -49,16 +51,23 @@ let opaqueWhiteColor* = newColor(r = 255'u8, g = 255'u8, b = 255'u8, a = 255'u8)
 proc rgbaColor*(r:int, g:int, b:int, a:int): sdl.Color=
   return sdl.Color((r.uint8, g.uint8, b.uint8, a.uint8))
 
-let clearColor* = sdl.Color((r:50'u8,g:50'u8,b:50'u8,a:0'u8))
-let btnColor* = rgbaColor(r=0,g=0,b=0,a=255)
-let bgColor* = rgbaColor(r=200,g=200,b=184,a=255)
+#[ 
+# colors moved to types.nim
+let transparentColor* = sdl.Color((r:50'u8,g:50'u8,b:50'u8,a:0'u8))
+let blackColor* = rgbaColor(r=0,g=0,b=0,a=255)
+let bgColor* = rgbaColor(r=200,g=200,b=184,a=255) ]#
 
-#var fontTable* = newTable[string, ttf.FontPtr](8)
+#*=================================================
+var rootSSRT* = newStyleSheetRef_Tbl()
+#*=================================================
 
-var defaultSST* = newStyleSheetRef_Tbl()
-
-defaultSST["rootStyle"] = StyleSheetRef(
+rootSSRT["rootStyle"] = StyleSheetRef(
   ## default style for every elem, see recalc
+  ## it has sane defaults, it is not empty
+  ## for styles like "bold" or "hover"
+  ## - which are mostly empty eg
+  ## not overwriting undefined style properties -
+  ## use proc newStyleSheet*(): StyleSheetRef
   flexGrow: 0,
   flexGrowFrom: 75,
   flexDirection: fdColumn,
@@ -67,15 +76,16 @@ defaultSST["rootStyle"] = StyleSheetRef(
   alignContent: facStart,
   alignItems: faiCenter,
   spacing: -1,
-  color: btnColor, #sdl.Color((r:255'u8,g:255'u8,b:255'u8,a:255'u8)),
+  color: blackColor, #sdl.Color((r:255'u8,g:255'u8,b:255'u8,a:255'u8)),
   backGroundColor: bgColor, #sdl.Color((r:200'u8,g:186'u8,b:163'u8,a:255'u8)),
+  #borderColor: EmptyColor, #(r:55'u8, g:55'u8, b:55'u8, a:255'u8),
   font:0, # Regular Mono font, 16pt
   overFlow: ofScroll,
   #position: posAbsolute
   padding: -1
 )
 
-defaultSST["row"] = StyleSheetRef(
+rootSSRT["row"] = StyleSheetRef(
   flexGrow: 1,
   flexGrowFrom: 75,
   flexDirection: fdRow,
@@ -84,12 +94,12 @@ defaultSST["row"] = StyleSheetRef(
   alignContent: facCenter,
   alignItems: faiCenter,
   spacing: -1,
-  #color: clearColor,
+  #color: transparentColor,
   #backGroundColor: EmptyColor,
   padding: -1
 )
 
-defaultSST["column"] = StyleSheetRef(
+rootSSRT["column"] = StyleSheetRef(
   flexGrow: 1,
   flexGrowFrom: 66,
   flexDirection: fdColumn,
@@ -105,13 +115,13 @@ defaultSST["column"] = StyleSheetRef(
 
 
 
-defaultSST["bold"] = StyleSheetRef(
+rootSSRT["bold"] = StyleSheetRef(
   font:1
 )
-defaultSST["H2"] = StyleSheetRef(
+rootSSRT["H2"] = StyleSheetRef(
   font:2
 )
-defaultSST["H1"] = StyleSheetRef(
+rootSSRT["H1"] = StyleSheetRef(
   font:3
 )
 
@@ -120,7 +130,9 @@ defaultSST["H1"] = StyleSheetRef(
 
 
 
-###########################################
+#######################################################
+
+
 #[ 
      ######  ######## ##    ## ##       ########  ######  
     ##    ##    ##     ##  ##  ##       ##       ##    ## 
@@ -130,15 +142,17 @@ defaultSST["H1"] = StyleSheetRef(
     ##    ##    ##       ##    ##       ##       ##    ## 
      ######     ##       ##    ######## ########  ######  
  ]#
-template init(theStyleSheetRef_Tbl: StyleSheetRef_Tbl)=
+
+
+template initStyleCache(theStyleSheetRef_Tbl: StyleSheetRef_Tbl)=
   ## re/initialize stylesheet table with defaults
   theStyleSheetRef_Tbl.clear()
   theStyleSheetRef_Tbl["default"] = newStyleSheet() #! start
-  theStyleSheetRef_Tbl["default"] <- defaultSST["rootStyle"]
+  theStyleSheetRef_Tbl["default"] <- rootSSRT["rootStyle"]
 
 #...................................
 
-
+#TODO use, test, evaluate
 proc addOrUpdate*(target: TableRef[string, StyleSheetRef],
                   styleName: string,
                   style:StyleSheetRef)=
@@ -190,223 +204,116 @@ dP       `88888P' `88888P' `88888P8 dP `88888P'
 ##    ##  ##       ##    ## ##     ## ##       ##    ## 
 ##     ## ########  ######  ##     ## ########  ######  
  ]#
-proc renumberNthChild*(layer: Layer) #!FWD
+
+#*=================================================
+#*           RECALCULATE STYLESSHEETS
+#*=================================================
 
 proc recalcStyle*(this:DivRef, recursive:bool=false){.gcsafe.}=
   ## recalculate styleCache from:
-  ## - default style
+  ## - default style ("*")
   ## - parent style
-  ## - elem styles
-  ## 
-  ## + pseudo styles if any
-  const debug = 0
+  ## - elem styles (typeName, group, name)
+  ## - this.styles seq and inlineStyle
+  ##
+  ## + pseudo styles (hover, even, odd, ...) if any
+  ##
+  ## Cascade order (default and pseudostyles alike):
+  ##   "*" -> parent -> typeName -> group -> name
+  ##   -> this.styles -> inlineStyle
 
   if this.styleCache == nil: return # e.g. bare BRElem line-break markers
   {.gcsafe.}:
-    #[ if this.pseudoStyles == nil:
-      echo "*** NO PSEUDOSTYLES **** ", this.name
-      return ]#
-    var
-      #pseudoStyles = newTable[string, StyleSheetRef](4)
-      pseudoStylesForAll = newStyleSheetRef_Tbl() #newTable[string, StyleSheetRef](4)
-      typePseudoStyles = newStyleSheetRef_Tbl()
-      groupPseudoStyles = newStyleSheetRef_Tbl()
-      namedPseudoStyles = newStyleSheetRef_Tbl()
-      #TODO inlinePseudoStyles = newStyleSheetRef_Tbl()
 
+    #--------------------------------------------
+    #* COLLECT MATCHING STYLES IN CASCADE ORDER
+    #--------------------------------------------
     var
-      styleForAll = newStyleSheet()
-      typeStyle = newStyleSheet()
-      groupStyle = newStyleSheet()
-      nameStyle = newStyleSheet()
+      matched: seq[StyleSheetRef] = @[]
+      wildcard: StyleSheetRef
+      parentSrc: StyleSheetRef
+      typeSrc: StyleSheetRef
+      groupSrc: StyleSheetRef
+      nameSrc: StyleSheetRef
 
-    
+    if rootSSRT.hasKey("*"):
+      wildcard = rootSSRT["*"]
+      matched.add(wildcard)
+    if this.parent != nil and this.parent.styleCache != nil:
+      parentSrc = this.parent.styleCache.getOrDefault(this.parent.activeStyle)
+      matched.add(parentSrc)
+    if rootSSRT.hasKey(this.typeName):
+      typeSrc = rootSSRT[this.typeName]
+      matched.add(typeSrc)
+    if rootSSRT.hasKey(this.group):
+      groupSrc = rootSSRT[this.group]
+      matched.add(groupSrc)
+    if rootSSRT.hasKey(this.name):
+      nameSrc = rootSSRT[this.name]
+      matched.add(nameSrc)
+    for style in this.styles:
+      matched.add(style.style)
+    matched.add(this.inlineStyle)
+
     #--------------------------------------------
     #* INIT STYLE CACHE - ELEM STYLE
     #--------------------------------------------
-    this.styleCache.init()
-
-
-    #--------------------------------------------
-    #* CUMULATE STYLES and PSEUDO STYLES
-    #--------------------------------------------
-
-    for key in defaultSST.keys():
-
-      if key == "*":
-        styleForAll <- defaultSST[key]
-                
-        if defaultSST[key].pseudoStyles != nil:
-          for pkey in defaultSST[key].pseudoStyles.keys():
-            if pkey != "default":
-              if not this.styleCache.hasKey(pkey): #then initialize with default
-                this.styleCache[pkey] = newStyleSheet()
-                this.styleCache[pkey] <- this.styleCache["default"]
-                this.styleCache[pkey] <- styleForAll
-              this.styleCache[pkey] <- defaultSST[key].pseudoStyles[pkey]
-  
-      #*.........................................
-
-      if key == this.typeName:
-        #this.styles.add((name:key, style: defaultSST[key]))
-        typeStyle <- defaultSST[key]
-        
-        if defaultSST[key].pseudoStyles != nil:
-          for pkey in defaultSST[key].pseudoStyles.keys():
-            if pkey != "default":
-              if not this.styleCache.hasKey(pkey):
-                this.styleCache[pkey] = newStyleSheet()
-                this.styleCache[pkey] <- this.styleCache["default"]
-                this.styleCache[pkey] <- typeStyle
-              this.styleCache[pkey] <- defaultSST[key].pseudoStyles[pkey]
-
-
-      #*.........................................
-
-      if key == this.group:
-        #pseudoStyles.addOrUpdate("default", defaultSST[key])
-        groupStyle <- defaultSST[key]
-
-        if defaultSST[key].pseudoStyles != nil:
-          for pkey in defaultSST[key].pseudoStyles.keys():
-            if pkey != "default":
-              if not this.styleCache.hasKey(pkey):
-                this.styleCache[pkey] = newStyleSheet()
-                this.styleCache[pkey] <- this.styleCache["default"]
-                this.styleCache[pkey] <- groupStyle
-              this.styleCache[pkey] <- defaultSST[key].pseudoStyles[pkey]
-
-      #*.........................................
-
-
-      if key == this.name:
-        #echo "###### ", key
-        #pseudoStyles.addOrUpdate("default", defaultSST[key])
-        nameStyle <- defaultSST[key]
-                
-        if defaultSST[key].pseudoStyles != nil:
-          for pkey in defaultSST[key].pseudoStyles.keys():
-            #echo "###### ",this.name, " : ", pkey, " ######"
-            if (pkey == "even" and this.nthChild mod 2 == 0) or
-               (pkey == "odd" and this.nthChild mod 2 == 1):
-
-              nameStyle <- defaultSST[key].pseudoStyles[pkey]
-            
-            elif pkey != "default":
-              if not this.styleCache.hasKey(pkey):
-                this.styleCache[pkey] = newStyleSheet()
-                this.styleCache[pkey] <- this.styleCache["default"] # hint: rootStyle, font
-                this.styleCache[pkey] <- nameStyle # hint: color
-              this.styleCache[pkey] <- defaultSST[key].pseudoStyles[pkey]
-            #echo "###### "
-        else: 
-          discard
-          when debug > 1: echo " NOPSEUDOSTYLES ------"
-
-
-
-      #*.........................................
-  
-
+    this.styleCache.initStyleCache() # creates this.styleCache["default"] too!
 
     #--------------------------------------------
-    #* ASSEMBLE THE STYLE -- ADD ALL STYLES
+    #* ASSEMBLE "default"
     #--------------------------------------------
-    #* parent
-    if this.parent != nil:
-      #this.styleCache["default"] <- this.parent.pseudoStyles["default"]
-      this.styleCache["default"] <- this.parent.styleCache["default"]
+    for style in matched:
+      if style != nil:
+        this.styleCache["default"] <- style
 
-    #* same type
-    this.styleCache["default"] <- typeStyle
+    #--------------------------------------------
+    #* ASSEMBLE PSEUDOSTYLES (same cascade order)
+    #--------------------------------------------
+    template mergePseudo(pkey: string, pstyle: StyleSheetRef) =
+      if pkey != "default" and pstyle != nil:
+        if not this.styleCache.hasKey(pkey):
+          this.styleCache[pkey] = newStyleSheet()
+          this.styleCache[pkey] <- this.styleCache["default"]
+        this.styleCache[pkey] <- pstyle
 
-    #* logical group
-    this.styleCache["default"] <- groupStyle
+    template mergePseudos(source: StyleSheetRef) =
+      if source != nil and source.pseudoStyles != nil:
+        for pkey, pstyle in source.pseudoStyles:
+          mergePseudo(pkey, pstyle)
 
-    #* name == its own style
-    this.styleCache["default"] <- nameStyle
-
-    #* "classes"
+    mergePseudos(wildcard)
+    mergePseudos(typeSrc)
+    mergePseudos(groupSrc)
+    mergePseudos(nameSrc)
     for style in this.styles:
-      this.styleCache["default"] <- style.style
-
-    #TODO: inline styling
-    this.styleCache["default"] <- this.inlineStyle
-
-
+      mergePseudos(style.style)
+    mergePseudos(this.inlineStyle)
 
     #--------------------------------------------
-    #* pseudostyles
-    #--------------------------------------------
-    if pseudoStylesForAll.len > 1:
-      for key in pseudoStylesForAll.keys:
-        if key != "default":
-          if not this.styleCache.hasKey(key):
-            this.styleCache[key] = newStyleSheet()
-            this.styleCache[key] <- this.styleCache["default"]
-          this.styleCache[key] <- pseudoStylesForAll[key]
-
-    if typePseudoStyles.len > 1:
-      for key in typePseudoStyles.keys:
-        if key != "default":
-          if not this.styleCache.hasKey(key):
-            this.styleCache[key] = newStyleSheet()
-            this.styleCache[key] <- this.styleCache["default"]
-          this.styleCache[key] <- typePseudoStyles[key]
-
-    #[ parent pseudostyles left out intentionally ]#
-
-    if groupPseudoStyles.len > 1:
-      for key in groupPseudoStyles.keys:
-        if key != "default":
-          if not this.styleCache.hasKey(key):
-            this.styleCache[key] = newStyleSheet()
-            this.styleCache[key] <- this.styleCache["default"]
-          this.styleCache[key] <- groupPseudoStyles[key]
-
-    if namedPseudoStyles.len > 1:
-      for key in namedPseudoStyles.keys:
-        if key != "default":
-          if not this.styleCache.hasKey(key):
-            this.styleCache[key] = newStyleSheet()
-            this.styleCache[key] <- this.styleCache["default"]
-          this.styleCache[key] <- namedPseudoStyles[key]
-
-    # "classes"
-    for style in this.styles:
-      if style.style.pseudoStyles != nil:
-        for key in style.style.pseudoStyles.keys():
-          if key != "default":
-            if not this.styleCache.hasKey(key):
-              this.styleCache[key] = newStyleSheet()
-              this.styleCache[key] <- this.styleCache["default"]
-            this.styleCache[key] <- style.style.pseudoStyles[key]
-
-
-    
     # finally
+    #--------------------------------------------
+
     this.redrawFlag = 1
 
-
-    if not this.styleCache.hasKey(this.activeStyle): #? needed?
+    if not this.styleCache.hasKey(this.activeStyle): #safeguard
       this.activeStyle = "default"
 
+    if recursive:
+      for layer in this.layers:
+        for i_elem in 0..layer.elems.high:
+          layer.elems[i_elem].recalcStyle(recursive=true)
 
-
-    
-    for layer in this.layers:
-      layer.renumberNthChild()
+    #[ for layer in this.layers:
       for i_elem in 0..layer.elems.high:
         if recursive:
           layer.elems[i_elem].recalcStyle(recursive=true)
         else:
-          layer.elems[i_elem].redrawFlag = 1
+          layer.elems[i_elem].redrawFlag = 1 ]#
 
-proc renumberNthChild*(layer: Layer) =
-  ## recompute nthChild for a layer's elems after structural changes
-  for i_elem in 0..layer.elems.high:
-    if not (layer.elems[i_elem] of BRElem):
-      layer.elems[i_elem].nthChild = i_elem + 1
+
+#######################################################
+
 
 #[ 
    ###    ########  ########                              
@@ -416,7 +323,7 @@ proc renumberNthChild*(layer: Layer) =
 ######### ##     ## ##     ##                             
 ##     ## ##     ## ##     ##                             
 ##     ## ######## ##     ##                              
- 
+
 
  ########  ######## ##     ##  #######  ##     ## ######## 
 ##     ## ##       ###   ### ##     ## ##     ## ##       
@@ -428,6 +335,9 @@ proc renumberNthChild*(layer: Layer) =
 
   ]#
 
+#######################################################
+
+#TODO use, test, evaluate
 proc addStyle*(this:DivRef,
                style:tuple[name:string,
                            style:StyleSheetRef],
@@ -438,7 +348,7 @@ proc addStyle*(this:DivRef,
   this.styles.add(style)
   this.recalcStyle(recalcChilds)
 
-
+#TODO use, test, evaluate
 proc addStyle*(this:DivRef,
                styleName:string,
                recalcChilds:bool=true) {.gcsafe.} =
@@ -446,46 +356,59 @@ proc addStyle*(this:DivRef,
   ## DivRef.styles must be ordered, and named at once
   ## use `recalcChilds = false` for micro-optimisation
   {.gcsafe.}:
-    this.styles.add((styleName, defaultSST[styleName]))
+    this.styles.add((styleName, rootSSRT[styleName]))
   this.recalcStyle(recalcChilds)
   #[ for style in this.styles:
     echo style.name ]#
 
-
+#TODO use, test, evaluate
 proc removeStyle*(this:DivRef,
                   name:string,
-                  recalcChilds:bool=true) {.gcsafe.} =
+                  recalcChildrenStyles:bool=true) {.gcsafe.} =
   ## delete a style from the style sequence
   ## DivRef.styles must be ordered, and named at once
-  ## use `recalcChilds = false` for micro-optimisation
+  ## use `recalcChildrenStyles = false` for micro-optimisation
   for i in 0..this.styles.high:
     if this.styles[i].name == name:
       this.styles.delete(i)
-  this.recalcStyle(recalcChilds)
+  this.recalcStyle(recalcChildrenStyles)
 
-#TODO can be changed to a system where only pseudostyle is 
-#TODO stored - because activestyle is always "default"
-#TODO wich is modifyed with add/remove style procs
-#TODO and recalculated
-proc setActiveStyle*(this:DivRef, styleName:string)=
+
+proc setActiveStyle*(this:DivRef, styleName:string,
+                     recalcChildrenStyles:bool=false)=
+  ## recalcChildrenStyles is false by default
+  ## as more pseudoStyle changes like
+  ## hovering, dragging occurs than Theme change
+  ## in the app,
+  ## and this is way faster.
+  ## But you should know when a big theme change needs
+  ## to be inherited by children
   if this != nil:
+    if styleName == this.activeStyle: return
     if this.styleCache.hasKey(styleName):
       if this.styleCache[styleName] != nil:
         this.prevStyle = this.activeStyle
         this.activeStyle = styleName
-        this.redrawFlag = 1
+        if recalcChildrenStyles:
+          this.recalcStyle(recursive=true)
+        else:
+          this.redrawFlag = 1
     #echo repr this.styleCache
-#[ proc setDefaultStyle*(this:DivRef)=
-  if this != nil:
-    if this.prevStyle != "":
-      this.activeStyle = this.prevStyle
-    this.redrawFlag = 1 ]#
-proc setDefaultStyle*(this:DivRef)=
+
+
+proc setDefaultStyle*(this:DivRef,
+                      recalcChildrenStyles:bool=false)=
   if this != nil:
     withLock this.lock:
       this.activeStyle = "default"
-      this.redrawFlag = 1
+      if not recalcChildrenStyles:
+        this.redrawFlag = 1
+    if recalcChildrenStyles:
+      this.recalcStyle(recursive=true)
 #.........................
+
+
+#######################################################
 
 
 #[ 
@@ -498,7 +421,9 @@ proc setDefaultStyle*(this:DivRef)=
 #### ##    ## ######## #### ##    ## ######## 
  ]#
 
-#--------------------------------------
+#######################################################
+
+
 proc setBackGroundColor*(this:DivRef,
                       r:uint8=255,
                       g:uint8=255,

@@ -34,7 +34,7 @@ Nim SDL2 GUI toolkit ("piigui"), GPL-2.0, single author (Istvan Nagy). Some comm
   - `types.nim` — core types: `DivRef`/`DivObj`, `StyleSheetRef`, `Layer`, `ScrollBar`, size units (`muAuto`/`muStretch`/`muPx`/`muPc`), layout enums.
   - `simple.nim` — boilerplate: `newSimpleGui`, `closeGui`, embedded font.
   - `hidevents.nim` — `hid_events(pgui)`: the main HID event loop (returns `true` to quit).
-  - `style.nim` — `recalcStyle`; `defaultSST` global style table.
+  - `style.nim` — `recalcStyle`; `rootSSRT` global style table.
   - `layout/flex.nim` — flex layout with scrolling support (`ofScroll`, `innerW`/`innerH`).
   - `layout/recalcH.nim`, `layout/recalcV.nim` — horizontal/vertical single-line box layouts, used by `row`/`column`. Intentionally **not scrollable** and single-line by design; use `flexRow`/`flexColumn` (see `src/piigui.nim`) when scrolling is needed. Import them as `import piigui/layout/recalcH as recalcHMod` / `... as recalcVMod`: the module name shadows the exported proc (`recalcH`), so a bare `import piigui/layout/recalcH` makes `recalcH` resolve to the module, not the proc.
   - `ui/` — widgets (`textbox`, `label`, `dosbtn`, `atogglebtn`, `gradbtn`, `scrollbar`, `utf8textarea`).
@@ -42,7 +42,7 @@ Nim SDL2 GUI toolkit ("piigui"), GPL-2.0, single author (Istvan Nagy). Some comm
 
 ## Conventions that differ from defaults
 
-- Styling is global via the `defaultSST` table, keyed by element **type name / group / name**, plus `"rootStyle"` (base) and pseudo-style keys (`"hover"`, `"focus"`). Add styles as `defaultSST["myGroup"] = newStyleSheet()`; pseudo-styles via `addNewPseudoStyle("hover")` / `addPseudoStyle(...)`. `recalcStyle(true)` must run before `recalcDOM()` in a demo.
+- Styling is global via the `rootSSRT` table, keyed by element **type name / group / name**, plus `"rootStyle"` (base) and pseudo-style keys (`"hover"`, `"focus"`). Add styles as `rootSSRT["myGroup"] = newStyleSheet()`; pseudo-styles via `addNewPseudoStyle("hover")` / `addPseudoStyle(...)`. `recalcStyle(true)` must run before `recalcDOM()` in a demo.
 - Scrolling is automatic and on by default (`overFlow == ofScroll`): containers that overflow get a scrollbar without opt-in. Set `overFlow = ofHidden` to clip instead. Do not re-derive this; the pipeline is documented in detail in `doc/scroll_system.md` (read it before touching scrollbar/layout code).
 - `doc/style_logic.txt`, `doc/recalcflex_logic.txt`, `doc/flex_styling_aid.txt` are design notes; some may be stale relative to the code.
 - `doc/todo.txt` is the author's scratch todo — consult it for intended direction.

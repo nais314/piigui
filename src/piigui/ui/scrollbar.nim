@@ -21,7 +21,7 @@ import locks
 
   Styling is strictly optional: every part inherits `rootStyle` (the usual
   cascade). If the user registered `scrollbarTrack`, `scrollbarSlider` or
-  `scrollbarArrow` in `defaultSST`, the part's class style is layered on
+  `scrollbarArrow` in `rootSSRT`, the part's class style is layered on
   top, including its `hover` / `focus` pseudo-styles.
 ]##
 
@@ -108,7 +108,7 @@ proc setParentClip(this: DivRef, scrollX, scrollY: int) =
 
 proc newScrollBarPart(parent: DivRef, name, typeName, styleName: string): DivRef =
   ## like newDiv, but the part is never added to any layer.
-  ## styleName is applied only if the user defined it in defaultSST,
+  ## styleName is applied only if the user defined it in rootSSRT,
   ## otherwise the part falls back to the inherited rootStyle.
   result = new DivRef
   initLock(result.lock)
@@ -122,8 +122,8 @@ proc newScrollBarPart(parent: DivRef, name, typeName, styleName: string): DivRef
   result.name = name
   result.inlineStyle = newStyleSheet()
   result.styleCache = newTable[string, StyleSheetRef](4)
-  if defaultSST.hasKey(styleName):
-    result.styles.add((styleName, defaultSST[styleName]))
+  if rootSSRT.hasKey(styleName):
+    result.styles.add((styleName, rootSSRT[styleName]))
   result.activeStyle = "default"
   recalcStyle(result)
   result.redrawFlag = 1

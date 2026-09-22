@@ -30,6 +30,9 @@ const
   ScrollBarWheelStep* = 40
   ScrollBarArrowStep* = 16
 
+  transparentColor* = sdl.Color((r:50'u8,g:50'u8,b:50'u8,a:0'u8))
+  blackColor* = sdl.Color((r:0'u8,g:0'u8,b:0'u8,a:255'u8))
+  bgColor* = sdl.Color((r:200'u8,g:200'u8,b:184'u8,a:255'u8))
 #-------------------------------------------------------
 type
   HexColor* = uint32
@@ -100,27 +103,21 @@ type
     # todo width*: int
     # todo height*: int
     # child related:::::::
-    flexGrow*: int ## 0 < to activate growth
-    flexGrowFrom*:int # eg 75: grow if line >= 75% of availW
-    #flexShrink*: int
+    flexGrow*: int = -1 ## 0 < to activate growth
+    flexGrowFrom*:int = -1 # eg 75: grow if line >= 75% of availW
+    
+    flexDirection*: FlexDirectionKind = fdUndefined
+    justifyContent*: FlexJustifyContentKind = fjcUndefined # horizontal distribute the lines
+    alignContent*: FlexAlignContentKind = facUndefined # vertical distribute the lines
+    alignItems*: FlexAlignItemsKind = faiUndefined # vertical, elems in line
 
-    flexDirection*: FlexDirectionKind
-    #flexWrap*: bool #! overflow?????
-    justifyContent*: FlexJustifyContentKind # horizontal distribute the lines
-    alignContent*: FlexAlignContentKind # vertical distribute the lines
-    alignItems*: FlexAlignItemsKind # vertical, elems in line
-
-    spacing*:int # elems margin
-
-    # self related::::::::
-    #maxWidth*:int
-    #maxHeight*:int
+    spacing*:int = -1 # elems margin, -1 means dont use == 0
 
     #borderWidth*:tuple[top,right,bottom,left:int]
 
-    color*: sdl.Color
-    backGroundColor*: sdl.Color
-    borderColor*: sdl.Color
+    color*: sdl.Color = EmptyColor #(r:0'u8, g:0'u8, b:0'u8, a:255'u8)
+    backGroundColor*: sdl.Color = EmptyColor #(r:222'u8, g:222'u8, b:222'u8, a:255'u8)
+    borderColor*: sdl.Color = EmptyColor #sdl.Color = (r:55'u8, g:55'u8, b:55'u8, a:255'u8)
 
     #TODO BACKGROUND
     #background*: BackGroundKindRef
@@ -130,15 +127,15 @@ type
     #backGroundRepeat*: BackgroundRepeatKind
 
     #font*:string  # fontTable[string, sdl.font] #! DELETE
-    font*: int  # FontTable* = seq[FontObject]
+    font*: int = -1  # FontTable* = seq[FontObject]
 
-    overFlow*: OverFlowKind
+    overFlow*: OverFlowKind = ofScroll
 
     #opacity*: int #TODO how to add opacity? 0 - 1.0 * alpha?
 
     #position*: PositionKind
 
-    padding*: int
+    padding*: int = -1
 
     pseudoStyles*: TableRef[string, StyleSheetRef]
 
@@ -198,7 +195,6 @@ type
     iD*: uint # uniq ID for AI and such... result.iD = piigui.getNextGlobalID()
 
     parent*: DivRef
-    nthChild*:int
 
     #layers*: seq[seq[DivRef]] # childs on layers
     layers*: seq[Layer]
@@ -421,16 +417,19 @@ proc clampScale*(v: float, lo: float = MinScale, hi: float = MaxScale): float =
 
  ]#
 
-
+##* SSRT == StyleSheet Ref Table
 proc newStyleSheetRef_Tbl*(): StyleSheetRef_Tbl =
   ## init controlls StyleSheetSeq
   newTable[string, StyleSheetRef](8)
 
+template newSSRT*(): StyleSheetRef_Tbl = newStyleSheetRef_Tbl()
 
 proc newStyleSheet*(): StyleSheetRef =
   result = new(StyleSheetRef)
 
-  result.flexGrow = -1
+  # lines belowe moved to object defaults
+  # in types.nim
+  #[   result.flexGrow = -1
   result.flexGrowFrom = -1
 
   result.flexDirection = fdUndefined
@@ -440,12 +439,13 @@ proc newStyleSheet*(): StyleSheetRef =
 
   result.color = EmptyColor
   result.backGroundColor = EmptyColor
+  result.borderColor = EmptyColor
 
   result.padding = -1
   result.spacing = -1
   result.overFlow = ofScroll
 
-  result.font = -1
+  result.font = -1 ]#
 
 
 proc clearStyleSheet*(s: StyleSheetRef) =
@@ -459,6 +459,7 @@ proc clearStyleSheet*(s: StyleSheetRef) =
 
   s.color = EmptyColor
   s.backGroundColor = EmptyColor
+  s.borderColor = EmptyColor
 
   s.padding = -1
   s.spacing = -1

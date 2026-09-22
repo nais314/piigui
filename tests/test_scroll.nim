@@ -19,23 +19,23 @@ import std/monotimes
 # optional scrollbar styles (strictly optional:
 # without them the parts inherit rootStyle)
 
-defaultSST["scrollbarTrack"] = newStyleSheet()
-defaultSST["scrollbarTrack"].backGroundColor = (r:70, g:70, b:70, a:255)
+rootSSRT["scrollbarTrack"] = newStyleSheet()
+rootSSRT["scrollbarTrack"].backGroundColor = (r:70, g:70, b:70, a:255)
 
-defaultSST["scrollbarSlider"] = newStyleSheet()
-defaultSST["scrollbarSlider"].color = (r:200, g:200, b:200, a:255)
-defaultSST["scrollbarSlider"].addNewPseudoStyle("hover")
-defaultSST["scrollbarSlider"].pseudoStyles["hover"].color = (r:235, g:235, b:235, a:255)
-defaultSST["scrollbarSlider"].addNewPseudoStyle("focus")
-defaultSST["scrollbarSlider"].pseudoStyles["focus"].color = (r:255, g:220, b:120, a:255)
+rootSSRT["scrollbarSlider"] = newStyleSheet()
+rootSSRT["scrollbarSlider"].color = (r:200, g:200, b:200, a:255)
+rootSSRT["scrollbarSlider"].addNewPseudoStyle("hover")
+rootSSRT["scrollbarSlider"].pseudoStyles["hover"].color = (r:235, g:235, b:235, a:255)
+rootSSRT["scrollbarSlider"].addNewPseudoStyle("focus")
+rootSSRT["scrollbarSlider"].pseudoStyles["focus"].color = (r:255, g:220, b:120, a:255)
 
-defaultSST["scrollbarArrow"] = newStyleSheet()
-defaultSST["scrollbarArrow"].color = (r:110, g:110, b:110, a:255)
-defaultSST["scrollbarArrow"].backGroundColor = (r:215, g:215, b:215, a:255)
-defaultSST["scrollbarArrow"].addNewPseudoStyle("hover")
-defaultSST["scrollbarArrow"].pseudoStyles["hover"].backGroundColor = (r:255, g:255, b:255, a:255)
-defaultSST["scrollbarArrow"].addNewPseudoStyle("focus")
-defaultSST["scrollbarArrow"].pseudoStyles["focus"].backGroundColor = (r:170, g:170, b:170, a:255)
+rootSSRT["scrollbarArrow"] = newStyleSheet()
+rootSSRT["scrollbarArrow"].color = (r:110, g:110, b:110, a:255)
+rootSSRT["scrollbarArrow"].backGroundColor = (r:215, g:215, b:215, a:255)
+rootSSRT["scrollbarArrow"].addNewPseudoStyle("hover")
+rootSSRT["scrollbarArrow"].pseudoStyles["hover"].backGroundColor = (r:255, g:255, b:255, a:255)
+rootSSRT["scrollbarArrow"].addNewPseudoStyle("focus")
+rootSSRT["scrollbarArrow"].pseudoStyles["focus"].backGroundColor = (r:170, g:170, b:170, a:255)
 
 ###########################################
 
@@ -43,9 +43,9 @@ var gui = newSimpleGui()
 gui.rootElem.setPadding(10)
 gui.rootElem.setBackGroundColor(0x404040FF.HexColor)
 
-defaultSST["demobtn"] = newStyleSheet()
-defaultSST["demobtn"].backGroundColor = (r:120, g:120, b:120, a:255)
-defaultSST["demobtn"].color = (r:0, g:0, b:0, a:255)
+rootSSRT["demobtn"] = newStyleSheet()
+rootSSRT["demobtn"].backGroundColor = (r:120, g:120, b:120, a:255)
+rootSSRT["demobtn"].color = (r:0, g:0, b:0, a:255)
 
 # vertical scroll test: a bounded column of fixed-height buttons
 # ofScroll is the default, so it scrolls automatically on overflow
@@ -71,7 +71,6 @@ let br = new BRElem
 br.parent = scrollRow
 br.pgui = gui
 scrollRow.layers[0].elems.add(br)
-scrollRow.layers[0].renumberNthChild()
 for i in 6 ..< 12:
   discard scrollRow.newDosBtn(
     name = "hbtn" & $i,
@@ -82,7 +81,6 @@ let br2 = new BRElem
 br2.parent = scrollRow
 br2.pgui = gui
 scrollRow.layers[0].elems.add(br)
-scrollRow.layers[0].renumberNthChild()
 for i in 12 ..< 20:
   discard scrollRow.newDosBtn(
     name = "hbtn" & $i,

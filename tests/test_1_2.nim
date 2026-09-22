@@ -29,29 +29,29 @@ gui.rootElem.setPadding(10)
 gui.rootElem.setBackGroundColor(0x808080FF.HexColor)
 
 
-defaultSST["white"] = newStyleSheet()
-defaultSST["white"].backGroundColor = (r:255,g:255,b:255,a:255)
+rootSSRT["white"] = newStyleSheet()
+rootSSRT["white"].backGroundColor = (r:255,g:255,b:255,a:255)
 
-defaultSST["lightgray"] = newStyleSheet()
-defaultSST["lightgray"].backGroundColor = (r:210,g:210,b:210,a:255)
-
-
-defaultSST["tabbtn"] = newStyleSheet()
-defaultSST["tabbtn"].setBackGroundColor(0xcceeffff.HexColor)
-defaultSST["tabbtn"].setColor(0x00334dff.HexColor)
-defaultSST["tabbtn"].setBorderColor(0x0099e6ff.HexColor)
-
-defaultSST["tabbtn"].addPseudoStyle(newStyleSheet(), "hover")
-defaultSST["tabbtn"].pseudoStyles["hover"].backGroundColor = (r:0, g:230, b:191, a:255)
+rootSSRT["lightgray"] = newStyleSheet()
+rootSSRT["lightgray"].backGroundColor = (r:210,g:210,b:210,a:255)
 
 
-defaultSST["DosBtn"] = newStyleSheet()
-defaultSST["DosBtn"].setBackGroundColor(0xff9900ff.HexColor)
-defaultSST["DosBtn"].setColor(0x331f00ff.HexColor)
-defaultSST["DosBtn"].setBorderColor(0x0099e6ff.HexColor)
+rootSSRT["tabbtn"] = newStyleSheet()
+rootSSRT["tabbtn"].setBackGroundColor(0xcceeffff.HexColor)
+rootSSRT["tabbtn"].setColor(0x00334dff.HexColor)
+rootSSRT["tabbtn"].setBorderColor(0x0099e6ff.HexColor)
 
-defaultSST["DosBtn"].addNewPseudoStyle("hover")
-defaultSST["DosBtn"].pseudoStyles["hover"].backGroundColor = (r:0, g:230, b:191, a:255)
+rootSSRT["tabbtn"].addPseudoStyle(newStyleSheet(), "hover")
+rootSSRT["tabbtn"].pseudoStyles["hover"].backGroundColor = (r:0, g:230, b:191, a:255)
+
+
+rootSSRT["DosBtn"] = newStyleSheet()
+rootSSRT["DosBtn"].setBackGroundColor(0xff9900ff.HexColor)
+rootSSRT["DosBtn"].setColor(0x331f00ff.HexColor)
+rootSSRT["DosBtn"].setBorderColor(0x0099e6ff.HexColor)
+
+rootSSRT["DosBtn"].addNewPseudoStyle("hover")
+rootSSRT["DosBtn"].pseudoStyles["hover"].backGroundColor = (r:0, g:230, b:191, a:255)
 
 
 # frame structure .......................
@@ -125,12 +125,12 @@ let tcbtn1: DosBtn = tabContent1.newDosBtn(
   height = "45%",
   text = "tc1Btn"
   )
-defaultSST["tcBtn"]= newStyleSheet()
-defaultSST["tcBtn"].backGroundColor = (r:0, g:230, b:191, a:255)
+rootSSRT["tcBtn"]= newStyleSheet()
+rootSSRT["tcBtn"].backGroundColor = (r:0, g:230, b:191, a:255)
 
-defaultSST["tcBtn"].addPseudoStyle(newStyleSheet(), "hover")
-defaultSST["tcBtn"].pseudoStyles["hover"].backGroundColor = (r:230, g:230, b:0, a:255)
-defaultSST["tcBtn"].pseudoStyles["hover"].color = (r:0, g:0, b:0, a:180)
+rootSSRT["tcBtn"].addPseudoStyle(newStyleSheet(), "hover")
+rootSSRT["tcBtn"].pseudoStyles["hover"].backGroundColor = (r:230, g:230, b:0, a:255)
+rootSSRT["tcBtn"].pseudoStyles["hover"].color = (r:0, g:0, b:0, a:180)
 #.....
 
 let gradbtn1 = tabContent1.newGradBtn(
@@ -143,9 +143,9 @@ let gradbtn1 = tabContent1.newGradBtn(
 
 gradbtn1.setColor(0x99ccffff.uint32)
 gradbtn1.setBackGroundColor(0x0080ffff.uint32)
-defaultSST["gradbtn1"]= newStyleSheet()
-defaultSST["gradbtn1"].addNewPseudoStyle("hover")
-defaultSST["gradbtn1"].pseudoStyles["hover"].backGroundColor = (r:230, g:230, b:0, a:255)
+rootSSRT["gradbtn1"]= newStyleSheet()
+rootSSRT["gradbtn1"].addNewPseudoStyle("hover")
+rootSSRT["gradbtn1"].pseudoStyles["hover"].backGroundColor = (r:230, g:230, b:0, a:255)
 
 #................
 
@@ -163,13 +163,13 @@ let label1 = tabContent2.newLabel(
   name = "Label1", width="75%", height = "20%"
 )
 label1.value = "GOMBAAAAAAA"
-defaultSST["Label1"]= newStyleSheet()
-defaultSST["Label1"].color = (r:230, g:230, b:0, a:255)
-defaultSST["Label1"].backGroundColor = clearColor
+rootSSRT["Label1"]= newStyleSheet()
+rootSSRT["Label1"].color = (r:230, g:230, b:0, a:255)
+rootSSRT["Label1"].backGroundColor = transparentColor
 
-defaultSST["Label1"].addNewPseudoStyle("blink")
-defaultSST["Label1"].pseudoStyles["blink"].color = (r:0, g:0, b:0, a:255)
-defaultSST["Label1"].pseudoStyles["blink"].backGroundColor = (r:0, g:0, b:0, a:0)
+rootSSRT["Label1"].addNewPseudoStyle("blink")
+rootSSRT["Label1"].pseudoStyles["blink"].color = (r:0, g:0, b:0, a:255)
+rootSSRT["Label1"].pseudoStyles["blink"].backGroundColor = (r:0, g:0, b:0, a:0)
 
 
 proc blink(this: DivRef) =

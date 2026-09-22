@@ -40,7 +40,6 @@ proc newLabel*(parent: DivRef,
   if parent != nil:
     result.pgui = parent.pgui
     result.window = parent.window
-    result.nthChild = parent.layers[layer].elems.len
 
   result.layers = @[]
   result.layer = layer
@@ -58,10 +57,10 @@ proc newLabel*(parent: DivRef,
   result.styleCache = newTable[string, StyleSheetRef](4)
 
   #DEBUG FALLBACK
-  #result.activeStyle = defaultSST["column"]
+  #result.activeStyle = rootSSRT["column"]
 
   for style in styles:
-    result.styles.add((style, defaultSST[style]))
+    result.styles.add((style, rootSSRT[style]))
 
   result.activeStyle = "default"
   recalcStyle(result)

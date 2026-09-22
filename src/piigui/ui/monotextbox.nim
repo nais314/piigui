@@ -67,7 +67,6 @@ proc newTextBox*(parent: DivRef,
   if parent != nil:
     result.pgui = parent.pgui
     result.window = parent.window
-    result.nthChild = parent.layers[layer].elems.len
 
   result.layers = @[]
   result.layer = layer
@@ -84,10 +83,10 @@ proc newTextBox*(parent: DivRef,
   result.styleCache = newTable[string, StyleSheetRef](4)
 
   #DEBUG FALLBACK
-  #result.activeStyle = defaultSST["column"]
+  #result.activeStyle = rootSSRT["column"]
    
   for style in styles:
-    result.styles.add((style, defaultSST[style]))
+    result.styles.add((style, rootSSRT[style]))
 
   result.activeStyle = "default"
   recalcStyle(result)
@@ -243,7 +242,7 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
 
       # the elems. texture is the render target x=0 y=0!
       discard sdl.setRenderTarget(this.pgui.renderer, this.textureCache)
-      this.pgui.renderer.setDrawColor(clearColor)
+      this.pgui.renderer.setDrawColor(transparentColor)
       discard this.pgui.renderer.clear()
       #.............................
 

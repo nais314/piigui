@@ -31,25 +31,25 @@ gui.rootElem.setPadding(10)
 gui.rootElem.setBackGroundColor(0x404040FF.HexColor)
 
 # styles ..........................
-defaultSST["lightgray"] = newStyleSheet()
-defaultSST["lightgray"].backGroundColor = (r:210, g:210, b:210, a:255)
+rootSSRT["lightgray"] = newStyleSheet()
+rootSSRT["lightgray"].backGroundColor = (r:210, g:210, b:210, a:255)
 
-defaultSST["tabbar"] = newStyleSheet()
-defaultSST["tabbar"].backGroundColor = (r:120, g:140, b:160, a:255)
+rootSSRT["tabbar"] = newStyleSheet()
+rootSSRT["tabbar"].backGroundColor = (r:120, g:140, b:160, a:255)
 
-defaultSST["contentbox"] = newStyleSheet()
-defaultSST["contentbox"].backGroundColor = (r:240, g:240, b:240, a:255)
+rootSSRT["contentbox"] = newStyleSheet()
+rootSSRT["contentbox"].backGroundColor = (r:240, g:240, b:240, a:255)
 
-defaultSST["tabbtn"] = newStyleSheet()
-defaultSST["tabbtn"].setBackGroundColor(0xcceeffff.HexColor)
-defaultSST["tabbtn"].setColor(0x00334dff.HexColor)
-defaultSST["tabbtn"].setBorderColor(0x0099e6ff.HexColor)
-defaultSST["tabbtn"].addNewPseudoStyle("hover")
-defaultSST["tabbtn"].pseudoStyles["hover"].backGroundColor = (r:0, g:230, b:191, a:255)
+rootSSRT["tabbtn"] = newStyleSheet()
+rootSSRT["tabbtn"].setBackGroundColor(0xcceeffff.HexColor)
+rootSSRT["tabbtn"].setColor(0x00334dff.HexColor)
+rootSSRT["tabbtn"].setBorderColor(0x0099e6ff.HexColor)
+rootSSRT["tabbtn"].addNewPseudoStyle("hover")
+rootSSRT["tabbtn"].pseudoStyles["hover"].backGroundColor = (r:0, g:230, b:191, a:255)
 
-defaultSST["demobtn"] = newStyleSheet()
-defaultSST["demobtn"].backGroundColor = (r:120, g:120, b:120, a:255)
-defaultSST["demobtn"].color = (r:0, g:0, b:0, a:255)
+rootSSRT["demobtn"] = newStyleSheet()
+rootSSRT["demobtn"].backGroundColor = (r:120, g:120, b:120, a:255)
+rootSSRT["demobtn"].color = (r:0, g:0, b:0, a:255)
 
 # sections ..........................
 let header = flexRow(gui.rootElem, 0, "header", "", "100%", "10%", ["lightgray"])

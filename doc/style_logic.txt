@@ -1,11 +1,11 @@
 SST = ((Simple or SDL) Style Sheet)
 
-var defaultSST* = newStyleSheetRef_Tbl() # default created auto
+var rootSSRT* = newStyleSheetRef_Tbl() # default created auto
 
-defaultSST["rootStyle"] = StyleSheetRef( # mother of all styles like rootObj
+rootSSRT["rootStyle"] = StyleSheetRef( # mother of all styles like rootObj
 
-defaultSST["row"]   #   flexDirection: fdRow,
-defaultSST["column"]  #  flexDirection: fdColumn,
+rootSSRT["row"]   #   flexDirection: fdRow,
+rootSSRT["column"]  #  flexDirection: fdColumn,
 
 
 proc recalcStyle*(this:DivRef, recursive:bool=false){.gcsafe.}=
@@ -16,7 +16,7 @@ proc recalcStyle*(this:DivRef, recursive:bool=false){.gcsafe.}=
   ## 
   ## + pseudo styles if any
 
-  Cumulate styles into these styleSheets from defaultSST
+  Cumulate styles into these styleSheets from rootSSRT
     var
       #pseudoStyles = newTable[string, StyleSheetRef](4)
       pseudoStylesForAll = newStyleSheetRef_Tbl() #newTable[string, StyleSheetRef](4)
@@ -33,9 +33,9 @@ proc recalcStyle*(this:DivRef, recursive:bool=false){.gcsafe.}=
 
   this.styleCache.clear()
   this.styleCache["default"] = newStyleSheet() #! start
-  this.styleCache["default"] <- defaultSST["rootStyle"]
+  this.styleCache["default"] <- rootSSRT["rootStyle"]
 
-  for key in defaultSST.keys():
+  for key in rootSSRT.keys():
     if key == "*":
     if key == this.typeName:
     if key == this.group:

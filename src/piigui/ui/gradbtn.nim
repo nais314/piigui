@@ -69,7 +69,6 @@ proc newGradBtn*(parent: DivRef,
   if parent != nil:
     result.pgui = parent.pgui
     result.window = parent.window
-    result.nthChild = parent.layers[layer].elems.len
 
   result.layers = @[]
   result.layer = layer
@@ -84,7 +83,7 @@ proc newGradBtn*(parent: DivRef,
   result.inlineStyle = newStyleSheet()
   result.styleCache = newTable[string, StyleSheetRef](4)
   for style in styles:
-    result.styles.add((style, defaultSST[style]))
+    result.styles.add((style, rootSSRT[style]))
 
   result.activeStyle = "default"
   recalcStyle(result)
@@ -185,7 +184,7 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
 
       # the elems. texture is the render target x=0 y=0!
       discard sdl.setRenderTarget(this.window.renderer, this.textureCache)
-      this.window.renderer.setDrawColor(clearColor)
+      this.window.renderer.setDrawColor(transparentColor)
       discard this.window.renderer.clear()
       # =====================================
       # =====================================

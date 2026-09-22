@@ -32,9 +32,9 @@ buttons), the overlay is drawn on top of the content, hit-tested first, and
 wheel / click / drag input is routed to it.
 
 The scrollbar is styled through the usual style system. It always inherits
-`defaultSST["rootStyle"]`, and it optionally layers the class styles
+`rootSSRT["rootStyle"]`, and it optionally layers the class styles
 `scrollbarTrack`, `scrollbarSlider` and `scrollbarArrow` on top if you define
-them in `defaultSST` (including their `hover` / `focus` pseudo-styles). If you
+them in `rootSSRT` (including their `hover` / `focus` pseudo-styles). If you
 do not define them, the scrollbar simply uses the inherited colors.
 
 ---
@@ -295,7 +295,7 @@ Scroll API (`src/piigui/ui/scrollbar.nim`)
 Internal helpers
 
 - `newScrollBarPart(parent, name, typeName, styleName)` — build one overlay
-  part; applies `styleName` only if it exists in `defaultSST`, else `rootStyle`.
+  part; applies `styleName` only if it exists in `rootSSRT`, else `rootStyle`.
 - `ancestorScroll(elem)` / `ownerOffset(elem)` / `scrollOwner(elem)` —
   compute the on-screen shift of the overlay (owner's ancestors only).
 - `setParentClip(this)` — clip a part to its parent's visible rectangle.

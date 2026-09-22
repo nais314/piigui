@@ -138,7 +138,7 @@ proc simpleSDLInit*(pgui: Pgui): bool =
     ScreenW,
     ScreenH,
     WindowFlags,
-    defaultSST
+    rootSSRT
   ) ]#
 
   # Clear screen with draw color
@@ -285,7 +285,7 @@ proc newSimpleGui*(
         windowW,
         windowH,
         DefaultWindowFlags,
-        defaultSST,
+        rootSSRT,
         recalcFun
         ) == nil: quit("cannot create window" & $getError(), QuitFailure)
 

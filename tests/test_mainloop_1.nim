@@ -27,14 +27,14 @@ var gui = newSimpleGui(
 
 
 
-defaultSST["mid"] = newStyleSheet()
-defaultSST["mid"].backGroundColor = (r:186,g:186,b:175,a:255)
+rootSSRT["mid"] = newStyleSheet()
+rootSSRT["mid"].backGroundColor = (r:186,g:186,b:175,a:255)
 
-defaultSST["light"] = newStyleSheet()
-defaultSST["light"].backGroundColor = lighten(defaultSST["mid"].backGroundColor)
+rootSSRT["light"] = newStyleSheet()
+rootSSRT["light"].backGroundColor = lighten(rootSSRT["mid"].backGroundColor)
 
-defaultSST["dark"] = newStyleSheet()
-defaultSST["dark"].backGroundColor = darken(defaultSST["mid"].backGroundColor)
+rootSSRT["dark"] = newStyleSheet()
+rootSSRT["dark"].backGroundColor = darken(rootSSRT["mid"].backGroundColor)
 
 
 
@@ -68,8 +68,8 @@ rightFooter.inlineStyle.justifyContent = fjcEnd
 
 discard leftFooter.newDosBtn(group="footBtn", width="25%", height="100%", text="nothing",shadowSizePx=0)
 let quitBtn = rightFooter.newDosBtn(group="footBtn", width="25%", text="quit",shadowSizePx=0)
-defaultSST["footBtn"] = newStyleSheet()
-defaultSST["footBtn"].backGroundColor = lighten(defaultSST["mid"].backGroundColor)
+rootSSRT["footBtn"] = newStyleSheet()
+rootSSRT["footBtn"].backGroundColor = lighten(rootSSRT["mid"].backGroundColor)
 proc quitBtnonClick(this:DivRef)=
   var sdlevent: sdl.Event
   sdlevent.kind = sdl.QuitEvent
