@@ -275,13 +275,13 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
         var textBGColor = this.styleCache[this.activeStyle].backGroundColor
         textBGColor.a = 1 #! patch
 
-        var surface = this.pgui.fonts["default"].renderUtf8Shaded(
-                    this.text,
-                    buttonTextColor(this.styleCache[this.activeStyle].backGroundColor),
-                    #lighten(this.styleCache[this.activeStyle].color, 100),
-                    #this.styleCache[this.activeStyle].backGroundColor
-                    textBGColor
-                    )
+        var surface = this.pgui.fonts[
+                                    this.styleCache[this.activeStyle].font
+                                  ].fontPtr.renderUtf8Blended(
+                                      this.text,
+                                      #this.styleCache[this.activeStyle].color,
+                                      buttonTextColor(this.styleCache[this.activeStyle].backGroundColor),
+                                      )
 
         var texture = sdl.createTextureFromSurface(this.window.renderer, surface)
         discard sdl.setTextureBlendMode(texture, sdl.BLENDMODE_BLEND)
@@ -290,7 +290,7 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
         # get font heigth
         var fh = this.pgui.fonts[
                     this.styleCache[this.activeStyle].font
-                    ].fontHeight() + 2
+                    ].fontPtr.fontHeight() + 2
 
         if paintRect.h > fh:
           paintRect.y = (paintRect.h - fh) div 2

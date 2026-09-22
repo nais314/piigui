@@ -129,7 +129,8 @@ type
     #backGroundProc*: proc(w,h:int, color:sdl.Color, x:int):Texture #? ptr? x for future and custom info pass
     #backGroundRepeat*: BackgroundRepeatKind
 
-    font*:string # fontTable[string, sdl.font] #TODO
+    #font*:string  # fontTable[string, sdl.font] #! DELETE
+    font*: int  # FontTable* = seq[FontObject]
 
     overFlow*: OverFlowKind
 
@@ -147,7 +148,13 @@ type
   # used by Elements
   StyleSheetSeq* = seq[tuple[name:string, style:StyleSheetRef]]
 
-  #FontTable* = TableRef[string, ttf.FontPtr]
+  FontObject* = ref object of RootObj
+    #name*: string
+    ptsize*: int
+    fontPtr*: ttf.FontPtr
+    ttfPath*: string # "" == load from memory, simple.nim
+    loader*: proc(ptsize:cint, str:string=""): ttf.FontPtr
+  FontTable* = seq[FontObject]
 
 
   #------------------------------------------------------
@@ -273,21 +280,22 @@ type
     #todo   rootElem
     # window and renderer references must be updated
     windows*: Table[uint32, PgWindow] # uses SDL's WindowID
-    currentWindowId*:uint32
+    currentWindowId*: uint32
     window*: sdl.WindowPtr # Window pointer
     #renderer*: sdl.Renderer # Rendering state pointer
 
-    font_normal*: ttf.FontPtr
+    #font_normal*: ttf.FontPtr
 
-    focusElem*:DivRef # for routing user events
-    hoverElem*:DivRef # for removing :hover from prev hovered elem
+    focusElem*: DivRef # for routing user events
+    hoverElem*: DivRef # for removing :hover from prev hovered elem
 
-    mouseSource*:DivRef # drag and drop
+    mouseSource*: DivRef # drag and drop
     #mouseTarget*:DivRef # drag and drop
 
     mouseX*, mouseY*: int # last cursor pos (for drags like the scrollbar slider)
 
-    fonts*:TableRef[string, ttf.FontPtr]
+    #fonts*:TableRef[string, ttf.FontPtr]
+    fonts*: FontTable
 
     listeners*: ListenerList #* system wide events
     guiTimedEvents*: seq[TimedEvent]
@@ -304,17 +312,6 @@ type
   #------------------------------------------------------
 
 
-#[ template activeWindow*(pgui): PgWindow =
-  pgui.windows[pgui.currentWindowId]
- ]#
-
-#[ proc newApp*():Pgui=
-  result = new Pgui
-  result.fonts = newTable[string, ttf.FontPtr]()
- ]#
-
-#[ template trigger*(pgui:Pgui, evtname:string )=
-  pgui.trigger(evtname) ]#
 
 proc `=destroy`(this: var DivObj) =
   ## called when a DivRef is collected (ORC)
@@ -448,6 +445,8 @@ proc newStyleSheet*(): StyleSheetRef =
   result.spacing = -1
   result.overFlow = ofScroll
 
+  result.font = -1
+
 
 proc clearStyleSheet*(s: StyleSheetRef) =
   s.flexGrow = -1
@@ -464,6 +463,8 @@ proc clearStyleSheet*(s: StyleSheetRef) =
   s.padding = -1
   s.spacing = -1
   s.overFlow = ofScroll
+
+  s.font = -1
 
 
 proc addPseudoStyle*(parent, child: StyleSheetRef, childName :string)=
@@ -489,7 +490,7 @@ proc `<-`*(t: StyleSheetRef, s: StyleSheetRef)=
     #echo "<- t.color.r ", t.color.r.int
   if s.backGroundColor != EmptyColor : t.backGroundColor = s.backGroundColor
   if s.borderColor != EmptyColor : t.borderColor = s.borderColor
-  if s.font != "" : t.font = s.font
+  if s.font != -1 : t.font = s.font
   #echo t.padding, " <- ", s.padding
   if s.padding > -1: t.padding = s.padding
   if s.spacing > -1: t.spacing = s.spacing

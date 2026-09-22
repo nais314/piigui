@@ -14,31 +14,39 @@ import piigui/ui/[label, dosbtn, atogglebtn, gradbtn]
 
 
 
-var gui = newSimpleGui()
-gui.rootElem.setPadding(10)
-gui.rootElem.inlineStyle.alignContent = facCenter
+var pgui = newSimpleGui()
+pgui.rootElem.setPadding(10)
+pgui.rootElem.inlineStyle.alignContent = facCenter
 
-#gui.rootElem.inlineStyle.setBackGroundColor(0x55DD55FF.HexColor)
+#pgui.rootElem.inlineStyle.setBackGroundColor(0x55DD55FF.HexColor)
 
 
 
 let content = flexColumn(
-  gui.rootElem, 0, "content", "", "100%", "70%", ["dark"]
+  pgui.rootElem, 0, "content", "", "100%", "70%", ["dark"]
   )
 content.inlineStyle.setBackGroundColor(0x55DD55FF.HexColor)
 
-let scaleLabel = content.newLabel(val="1.0", width="25%", height="20px")
+let scaleLabel = content.newLabel(val="1.0", width="150px", height="20px")
+scaleLabel.inlineStyle.setBackGroundColor(0x99aa99FF.HexColor)
+
 #..........................
 
 
 let plusBtn = content.newDosBtn(width="150px", height="150px", text="+")
 proc plusBtnClick(this:DivRef)=
   this.window.scale += 0.125
-  this.redrawFlag = 1
-  gui.rootElem.recalcDOM()
-  gui.rootElem.refreshTextureCache()
+
   scaleLabel.setText($this.window.scale)
-  gui.rootElem.recalcDOM()
+  pgui.rootElem.recalcDOM()
+  
+  for fontObj in pgui.fonts:
+    let newSize = max(2, (fontObj.ptsize.float * this.window.scale).int).cint
+    let newFont = fontObj.loader(newSize)
+    if newFont != nil:
+      if fontObj.fontPtr != nil: ttf.close(fontObj.fontPtr)
+      fontObj.fontPtr = newFont
+
 plusBtn.addEventListener("click", plusBtnClick)
 plusBtn.inlineStyle.setBackGroundColor(0xccDDDDFF.HexColor)
 #..........................
@@ -47,11 +55,9 @@ plusBtn.inlineStyle.setBackGroundColor(0xccDDDDFF.HexColor)
 let minusBtn = content.newDosBtn(width="15%", height="15%", text="-")
 proc minusBtnClick(this:DivRef)=
   this.window.scale -= 0.125
-  this.redrawFlag = 1
-  gui.rootElem.recalcDOM()
-  gui.rootElem.refreshTextureCache()
+
   scaleLabel.setText($this.window.scale)
-  gui.rootElem.recalcDOM()
+  pgui.rootElem.recalcDOM()
 minusBtn.addEventListener("click", minusBtnClick)    
 #__________________________
 
@@ -71,19 +77,19 @@ quitBtn.addEventListener("click", quitBtnonClick)
 
 ###########################################################
 
-gui.rootElem.recalcStyle(true)
-gui.rootElem.recalcDOM()
+pgui.rootElem.recalcStyle(true)
+pgui.rootElem.recalcDOM()
 
 
 var done:bool=false
 while not done:
   let startTime = getMonoTime() # FPS capping
 
-  done = gui.hid_events()
-  gui.runTimedEvents()
+  done = pgui.hid_events()
+  pgui.runTimedEvents()
 
-  gui.drawDom(gui.rootElem)
-  gui.renderer.present()
+  pgui.drawDom(pgui.rootElem)
+  pgui.renderer.present()
 
   # FPS capping
   let endTime = getMonoTime()
@@ -93,4 +99,4 @@ while not done:
   #echo elapsedTime 
   sleep(max(0, 16 - elapsedTime.int))
 
-closeGui(gui)
+closeGui(pgui)

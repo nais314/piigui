@@ -134,7 +134,7 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
     
     let this = DosBtn(self)
 
-    const debug = 2
+    const debug = 0
 
     # .............................
     # clipRect (screen coordinates) hides overflow: the intersection of all
@@ -243,11 +243,13 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
 
         # text::::::::::::::::::::::::::
         if this.text.len > 0:
-          var surface = this.pgui.fonts["default"].renderUtf8Shaded(
-                      this.text,
-                      #this.styleCache[this.activeStyle].color,
-                      buttonTextColor(this.styleCache[this.activeStyle].backGroundColor),
-                      this.styleCache[this.activeStyle].backGroundColor)
+          var surface = this.pgui.fonts[
+                                    this.styleCache[this.activeStyle].font
+                                  ].fontPtr.renderUtf8Blended(
+                                      this.text,
+                                      #this.styleCache[this.activeStyle].color,
+                                      buttonTextColor(this.styleCache[this.activeStyle].backGroundColor),
+                                      )
 
           var texture = sdl.createTextureFromSurface(this.window.renderer, surface)
 
@@ -255,7 +257,7 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
           # get font heigth
           var fh = this.pgui.fonts[
                       this.styleCache[this.activeStyle].font
-                      ].fontHeight() + 2
+                      ].fontPtr.fontHeight() + 2
 
           if paintRect.h > fh:
             paintRect.y = (paintRect.h - fh) div 2
@@ -288,10 +290,13 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
 
         # text::::::::::::::::::::::::::
         if this.text.len > 0:
-          var surface = this.pgui.fonts["default"].renderUtf8Shaded(
-                      this.text,
-                      this.styleCache[this.activeStyle].color,
-                      this.styleCache[this.activeStyle].backGroundColor)
+          var surface = this.pgui.fonts[
+                                    this.styleCache[this.activeStyle].font
+                                  ].fontPtr.renderUtf8Blended(
+                                      this.text,
+                                      #this.styleCache[this.activeStyle].color,
+                                      buttonTextColor(this.styleCache[this.activeStyle].backGroundColor),
+                                      )
 
           var texture = sdl.createTextureFromSurface(this.window.renderer, surface)
           #texture.setAlphaMod(128'u8)
@@ -299,7 +304,7 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
           # get font heigth
           var fh = this.pgui.fonts[
                       this.styleCache[this.activeStyle].font
-                      ].fontHeight() + 2
+                      ].fontPtr.fontHeight() + 2
 
           if paintRect.h > fh:
             paintRect.y = ((paintRect.h - fh) div 2) + this.shadowSizePx

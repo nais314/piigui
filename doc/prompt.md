@@ -1,4 +1,4 @@
-main files are:
+# main files are:
 src/piigui.nim
 src/layout/flex.nim
 src/ui/dosbtn.nim
@@ -23,25 +23,8 @@ tests/test_flex.nim
 tests/test_1_2.nim
 other files can be skipped.
 
-today we are doing "housekeeping".
-'src/piigui/layout/flex.nim' is a main file of the project.
-you should look into it. 
-
-1.: analyze if it could be refactored to be more elegant (more simple, more fast, more readable, with better comments).
-would forward declarations make it more readable? are all the variables necessary? 
-
-2. Comments: do you have a comment before logic blocks? do you have comments after variable declarations about the variables role? 
-the code should be readable from top down by humans, while execution time and memory usage should be important too.
-Every long proc should have doc comments, which describes the logic and workflow, pipe of the proc.
-Every source file should have doc comments on top, which introduces the librarys role in the whole project.
-
-3.: i dont like short variable names like 'sb' for scrollbar, i like 'scrollBar', it is more readable; however variable names can be shortened like 'maximumHeigth' can be 'maxH', as 'max' and 'H' are very common in coding; 'indexElem' can be 'i_elem' for iterators -and so on.
-You should use https://nim-lang.org/docs/nep1.html NIM Standard Library Style Guide - except for const constants, because i begin them with Capital letter for readability.
-
-if you have any questions, i am here to answer.
-
 ====================================================================
-CODING STYLE GUIDE
+# CODING STYLE GUIDE
 (derived from src/piigui/layout/flex.nim - apply to all Nim code)
 ====================================================================
 

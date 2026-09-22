@@ -165,14 +165,21 @@ let label1 = tabContent2.newLabel(
 label1.value = "GOMBAAAAAAA"
 defaultSST["Label1"]= newStyleSheet()
 defaultSST["Label1"].color = (r:230, g:230, b:0, a:255)
+defaultSST["Label1"].backGroundColor = clearColor
+
 defaultSST["Label1"].addNewPseudoStyle("blink")
 defaultSST["Label1"].pseudoStyles["blink"].color = (r:0, g:0, b:0, a:255)
+defaultSST["Label1"].pseudoStyles["blink"].backGroundColor = (r:0, g:0, b:0, a:0)
+
 
 proc blink(this: DivRef) =
-  if this.activeStyle == "default":
+  if this.activeStyle != "blink":
     this.setActiveStyle("blink")
+    #echo "this.setActiveStyle(blink) " & this.activeStyle
   else:
-    this.setDefaultStyle()
+    #this.setDefaultStyle()
+    this.setActiveStyle("default")
+    #echo "this.setActiveStyle(Label1)" & this.activeStyle
 
 gui.addTimedEvent(label1, 500, blink)
 

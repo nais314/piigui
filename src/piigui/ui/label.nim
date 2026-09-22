@@ -28,7 +28,7 @@ proc newLabel*(parent: DivRef,
               recalcFun: proc (this: DivRef, layer: Layer): tuple[w: int, h: int] = recalcFlex,
               styles: openArray[string] = []
               ): Label =
-  const debug = 0b0
+  const debug = 0
 
   result = new Label
   initLock(result.lock)
@@ -135,11 +135,11 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
   ## if update only
   ## if visible
   withLock self.lock:
-    const debug = 0
+    const debug = 1
 
     let this = Label(self)
 
-    when debug > 0:
+    when debug > 1 :
       echo "draw()"
       echo this.name
       echo "w: ",this.w, " h: ", this.h
@@ -199,12 +199,12 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
 
       # the elems. texture is the render target x=0 y=0!
       discard sdl.setRenderTarget(this.pgui.renderer, this.textureCache)
-      this.pgui.renderer.setDrawColor(clearColor)
+      this.pgui.renderer.setDrawColor(EmptyColor)
       discard this.pgui.renderer.clear()
       #.............................
 
 
-      #[ # draw the background
+      # draw the background
       if this.styleCache[this.activeStyle].backGroundColor != EmptyColor:
         this.pgui.renderer.setDrawColor(
           this.styleCache[this.activeStyle].backGroundColor)
@@ -216,7 +216,7 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
         this.pgui.renderer.setDrawColor(
           this.styleCache[this.activeStyle].borderColor)
       discard this.pgui.renderer.drawRect(addr(canvasRect))
-      ]#
+      
 
       #=====================================
       if this.val.len > 0:
@@ -225,17 +225,19 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
           fontColor = this.styleCache[this.activeStyle].color
           fontBgColor = this.styleCache[this.activeStyle].backGroundColor
 
-        var surface = this.pgui.fonts["default"].renderUtf8Shaded(
-                      this.val,
-                      fontColor,
-                      fontBgColor)
+        var surface = this.pgui.fonts[
+                                  this.styleCache[this.activeStyle].font
+                                ].fontPtr.renderTextBlendedWrapped(
+                                            this.val,
+                                            fontColor,
+                                            0)
 
         var texture = sdl.createTextureFromSurface(this.pgui.renderer, surface)
 
         # get font height
         var fontHeight = this.pgui.fonts[
                     this.styleCache[this.activeStyle].font
-                    ].fontHeight() + 2
+                    ].fontPtr.fontHeight() + 2
 
         # center the text vertically and horizontally
         if canvasRect.h > fontHeight:

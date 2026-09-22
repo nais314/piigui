@@ -1,55 +1,247 @@
-if this.parent == nil: sdl.getSize(this.pgui.window, ww, wh)
+#!-----------------------------------------------------------------------------
+#! Stripped logic skeleton of src/piigui/layout/flex.nim (refreshed from the
+#! current source: state hoisted into a FlexLayout object, helpers are nimcall
+#! procs). Bodies removed, structure + why kept. Human-family spec in
+#! doc/recalcflex_pipeline.md.
+#!-----------------------------------------------------------------------------
 
-  result.w = this.w
-  result.h = this.h
+recalcFlex(this: DivRef, layer: Layer): tuple[w, h: int]  #! entry, one layer of `this`
+  if layer.elems.len == 0: return    #! nothing to lay out: stop early
 
-if this.style.padding > -1:
+  if this.parent == nil:             #! root: box tracks the window size
+    sdl.getSize(this.pgui.window, ww, wh)
+    this.w = ww; this.h = wh
+    this.x1 = 0; this.y1 = 0; this.x2 = w - 1; this.y2 = h - 1
 
-availW
-availH
-  let # save original values for calculations
-    origiW = availW
-    origiH = availH
+  result.w = this.w; result.h = this.h   #! container size (not content size)
 
+  # inner area usable by the content (after padding, before scrollbar)
+  if this.style.padding > -1:
+    baseAreaW = this.w - padding * 2     #! boundary-clamped to >= 0
+    baseAreaH = this.h - padding * 2     #! boundary-clamped to >= 0
+  else:
+    baseAreaW = this.w; baseAreaH = this.h
 
-if this.style.flexDirection == fdRow:#! ---- fdRow
-  for elem in layer.elems:
-    case elem.h_unit:
-      if lineH < elem.h: lineH = elem.h #TODO boundaries and sanity check
-    case elem.w_unit:
-  if line.len > 0: postProcessRow():: # post process new/last row
-    totalH += lineH
-    article.lines.add(line)
-    for i_elem in 0..line.high:
-      case line[i_elem].h_unit
-        of muAuto, muStretch: # if user not assigned height, stretch to lineH
-      case this.style.alignItems:
-      if line[i_elem].style.flexGrow > 0:
-    if this.style.flexGrowFrom <= (lineW / origiW * 100)
-  distributeContent()::
-    if this.style.flexDirection == fdRow:
-      case this.style.alignContent:
-      case this.style.justifyContent:
-    if this.style.flexDirection == fdColumn:#!............
-      case this.style.alignContent:
-      case this.style.justifyContent:
-#!................................
-elif this.style.flexDirection == fdColumn:#!---- fdColumn
-  for elem in layer.elems:
-    case elem.w_unit:
-    case elem.h_unit:
-  if line.len > 0: postProcessColumn()
-    totalH += lineH
-    article.lines.add(line)
-    for i_elem in 0..line.high:
-      case line[i_elem].h_unit
-      case this.style.alignItems:
-      if line[i_elem].style.flexGrow > 0:
-    if this.style.flexGrowFrom <= (lineW / origiW * 100)
-  distributeContent()::
-    if this.style.flexDirection == fdRow:
-      case this.style.alignContent:
-      case this.style.justifyContent:
-    if this.style.flexDirection == fdColumn:#!............
-      case this.style.alignContent:
-      case this.style.justifyContent:
+  var state: FlexLayout                 #! one reusable state object per pass
+
+  if this.style.overflow == ofScroll:   #! two-pass layout: reserve scrollbar
+    (contentW, contentH) = layoutPass(state, area = baseArea)   # measure #1
+    needsV = contentH > baseAreaH
+    needsH = contentW > baseAreaW
+
+    if needsV or needsH:                # overflow: run again with room for the bars
+      availW = baseAreaW - (needsV ? ScrollBarSize : 0)
+      availH = baseAreaH - (needsH ? ScrollBarSize : 0)
+      (contentW, contentH) = layoutPass(state, availW, availH)
+      needsV = contentH > availH        # re-check, rarely changes
+      needsH = contentW > availW
+
+    this.innerW = contentW              #! content size = source of truth for scrolling
+    this.innerH = contentH
+    result = (contentW, contentH)
+  else:                                 #! ofHidden: single pass, clip instead of scroll
+    result = layoutPass(state, baseAreaW, baseAreaH)
+
+  this.isRecalculated = true
+
+  for elem in layer.elems:              #! recurse into children (coords bottom-up)
+    elem.redrawFlag = 1
+    for elemLayer in elem.layers:
+      if elemLayer.recalc != nil:
+        (elemLayer.w, elemLayer.h) = elemLayer.recalc(elem, elemLayer)
+
+#!-----------------------------------------------------------------------------
+layoutPass(state, areaW, areaH): tuple[w, h: int]   #! one full pass
+  resetState(state, areaW, areaH)       # (re)initialise per-pass state
+  mainLayout(state)                     # size + place children, break into lines
+  return (state.contentWidth, state.contentHeight) # may exceed area (scrolls)
+
+#!-----------------------------------------------------------------------------
+resetState(state, areaW, areaH)
+  remainingWidth/H = areaW/H            # free space left in current line/column
+  areaWidth/H = areaW/H                 # full inner area of this pass
+  nextX = this.x1 (+ padding); nextY = this.y1 (+ padding)  # cursor for next child
+  currentLine.setLen(0)                 # children of the line being assembled
+  lineWidth = 0; lineHeight = 0         # accumulated size of current line/column
+  contentWidth = 0; contentHeight = 0   # final content totals (all lines)
+  article = empty                       # finished lines + geometry (for distribute)
+
+#!-----------------------------------------------------------------------------
+mainLayout(state)                        #! the core loop: children left->right / top->bottom
+
+  if flexDirection == fdRow:             #!---- horizontal flow ----
+    for elem in layer.elems:
+      if elem of BRElem: newRow; continue    # explicit line break
+
+      #--- measure height ---
+      case elem.h_unit:
+        muAuto, muStretch: elem.h = 1        # grown to line height in postProcessRow
+        muPx:              elem.h = h_value (* window.scale)
+        muPc:              elem.h = pct of areaHeight (floor - 1)
+
+      #--- measure width and place ---
+      case elem.w_unit:
+        muAuto, muStretch: # takes the remaining width; good for the LAST child
+          elem.w = remainingWidth; add to line; place (x1,x2,y1,y2); lineWidth += w
+          newRow                                  # auto children end their own row
+        muPx:              # fixed px (* window.scale)
+          if remainingWidth - w < 0 and overflow != ofScroll: newRow   # wrap
+          place; lineWidth += w; remainingWidth -= w; nextX += w (+ spacing)
+        muPc:              # % of areaWidth
+          if remainingWidth - w <= 0 and overflow != ofScroll: newRow   # wrap
+          place; lineWidth += w; remainingWidth -= w; nextX += w (+ spacing)
+
+      if lineHeight < elem.h: lineHeight = elem.h   # line height = tallest child
+
+    if currentLine.len > 0: postProcessRow        # finalise the last row
+    if contentHeight < areaHeight or contentWidth < areaWidth:
+      distributeContent
+
+  elif flexDirection == fdColumn or fdUndefined:  #!---- vertical flow (default) ----
+    for elem in layer.elems:
+      if elem of BRElem: newColumn; continue      # explicit column break
+
+      #--- measure width ---
+      case elem.w_unit:
+        muAuto, muStretch: elem.w = remainingWidth
+        muPx:              elem.w = w_value (* window.scale)
+        muPc:              elem.w = pct of areaWidth (floor - 1)
+      if lineWidth < elem.w: lineWidth = elem.w   # column width = widest child
+
+      #--- measure height and place ---
+      case elem.h_unit:
+        muAuto, muStretch: # takes remaining height; ends its own column
+          elem.h = remainingHeight; add; remainingHeight -= h; lineHeight += h
+          place; nextY += h; newColumn
+        muPx:              # fixed px (* window.scale)
+          if remainingHeight - h < 0 and overflow != ofScroll: newColumn  # wrap
+          add; remainingHeight -= h; lineHeight += h; place; nextY += h (+ spacing)
+        muPc:              # % of areaHeight
+          if remainingHeight - h <= 0 and overflow != ofScroll: newColumn  # wrap
+          add; remainingHeight -= h; lineHeight += h; place; nextY += h (+ spacing)
+
+      if lineWidth < elem.w: lineWidth = elem.w   # re-check width (auto/grown child)
+
+    if currentLine.len > 0: postProcessColumn     # finalise the last column
+    if contentWidth < areaWidth: distributeContent
+
+#!-----------------------------------------------------------------------------
+newRow  #! close the current row (already placed? postProcess it first) and start a new one below
+  if currentLine.len > 0: postProcessRow
+  remainingWidth = areaWidth                      # full width again
+  remainingHeight -= lineHeight                   # one line lower
+  nextY += lineHeight - 1 (+ spacing)
+  nextX = this.x1 (+ padding)                     # back to the left edge
+  lineWidth = 0; lineHeight = 0; currentLine.clear
+
+newColumn  #! the column twin: new column to the right
+  if currentLine.len > 0: postProcessColumn
+  remainingHeight = areaHeight                    # full height again
+  remainingWidth -= lineWidth                     # one column to the right
+  nextX += lineWidth - 1 (+ spacing)
+  nextY = this.y1 (+ padding)
+  lineHeight = 0; lineWidth = 0; currentLine.clear
+
+#!-----------------------------------------------------------------------------
+postProcessRow  #! finalise a finished row: record, align, grow, update totals
+  if spacing > -1: lineWidth -= spacing           # drop the trailing spacing
+  contentHeight += lineHeight                     # record the line
+  article.lines.add(currentLine)
+  article.lineDims.add((lineWidth, lineHeight, nextX, nextY))
+
+  for elem in line:
+    case elem.h_unit:                             # stretch auto/unsized children
+      muAuto, muStretch:
+        if lineHeight <= 1:                       # no height yet: fill remaining/area
+          lineHeight = remaining or area; elem.h = lineHeight
+          y2 += lineHeight - 1; contentHeight updated; lineDims.h updated
+        else:             elem.h = lineHeight; y2 += lineHeight - 1
+    case alignItems:                              # vertical alignment in the row
+      faiUndefined, faiStart: discard             # keep top
+      faiEnd:        shift elem down by (lineHeight - h)
+      faiCenter:     shift elem down by (lineHeight - h) div 2
+      faiStretch:    elem.h += (lineHeight - h); y2 += delta
+
+    if flexGrow > 0:                              # collect grow info for the pass below
+      flexGrowTotal += flexGrow; track biggestGrowIndex
+
+  # grow flexible children horizontally to fill the row (if there is room and
+  # the flexGrowFrom threshold on filled width (lineW/areaW*100) is reached)
+  if lineWidth < areaWidth and flexGrowTotal > 0 and flexGrowFrom <= fill%:
+    spacePerGrowUnit = free / flexGrowTotal (fallback 1)  # integer div
+    remainingSpace = free - flexGrowTotal * unit          # rounding remainder
+    for elem with flexGrow > 0:
+      delta = flexGrow * unit (+ remainingSpace if biggest)  # clamp to free space
+      elem.w += delta; x2 += delta; lineWidth += delta
+      shift the following children right by delta     # keep the row contiguous
+
+  contentWidth += lineWidth                     # finalise totals AFTER the grow
+  article.lineDims.last.w = lineWidth
+
+#!-----------------------------------------------------------------------------
+postProcessColumn  #! the row twin for columns (grows vertically instead)
+  if spacing > -1: lineHeight -= spacing         # drop trailing spacing
+
+  for elem in line:
+    case alignItems:                              # horizontal alignment in the column
+      faiUndefined, faiStart: discard
+      faiEnd:        shift elem right by (lineWidth - w)
+      faiCenter:     shift elem right by (lineWidth - w) div 2
+      faiStretch:    elem.w += delta; x2 += delta
+    if flexGrow > 0: collect flexGrowTotal / biggestGrowIndex
+
+  # grow flexible children vertically to fill the column (same threshold+patch)
+  if lineHeight < areaHeight and flexGrowTotal > 0 and flexGrowFrom <= fill%:
+    spacePerGrowUnit / remainingSpace (identical to row, on heights)
+    for elem with flexGrow > 0:
+      delta = flexGrow * unit (+ remainder if biggest), clamped
+      elem.h += delta; y2 += delta; lineHeight += delta
+      shift the following children down by delta
+
+  # NOTE: the article entry is recorded AFTER the grow here (unlike the row),
+  # so distributeContent sees the real (grown) content size.
+  contentWidth += lineWidth
+  contentHeight += lineHeight
+  article.lines.add(currentLine)
+  article.lineDims.add((lineWidth, lineHeight, nextX, nextY))
+
+#!-----------------------------------------------------------------------------
+distributeContent  #! spread the finished lines/columns inside the container
+                    #! = alignContent (lines in the container)
+                    #! + justifyContent (content inside each line)
+  if article.lines.len == 0: return            # nothing was laid out
+
+  if flexDirection == fdRow:                   #! lines flow horizontally
+    if contentHeight > areaHeight: return      # overflows: it scrolls, keep as-is
+
+    case alignContent:                         ## align ROWS vertically in the parent
+      facUndefined, facStart: discard
+      facEnd:        pack rows against the inner bottom edge (y2 - padding)
+      facCenter:     shift all rows down by freeH div 2 (only if delta > 1)
+      facStretch:    grow every row by freeH / n (+ rounding patch) -> fill parent
+      facSpaceBetween: gaps = freeH / (n-1) between rows (n>1) (+ patch)
+      facSpaceAround:  gaps = freeH / (n+1) around every row (n>1) (+ patch)
+
+    if contentWidth < areaWidth:               ## align each ROW's content horizontally
+      case justifyContent:
+        fjcUndefined, fjcStart: discard
+        fjcEnd:    shift each row right by (areaW - its lineW)
+        fjcCenter: shift each row right by (areaW - its lineW) div 2 (only if > 1)
+
+  elif flexDirection == fdColumn:              #! lines flow vertically
+    if contentWidth < areaWidth:               ## align COLUMNS horizontally in the parent
+      case alignContent:
+        facUndefined, facStart: discard
+        facCenter:        shift every column right by freeW div 2 (remainder patch)
+        facSpaceBetween:  gaps = freeW / (n-1) between columns (n>1);
+                          n == 1: centre like facCenter
+        facSpaceAround:   gaps = freeW / (n+1) around columns (n>1);
+                          n == 1: centre like facCenter
+        facStretch:       grow every column by freeW / n (+ patch) -> fill parent
+        facEnd:           shift every column right by freeW
+
+    if contentHeight < areaHeight:             ## align each COLUMN's content vertically
+      case justifyContent:
+        fjcUndefined, fjcStart: discard
+        fjcEnd:    shift each column down by (areaH - its lineH)
+        fjcCenter: shift each column down by (areaH - its lineH) div 2

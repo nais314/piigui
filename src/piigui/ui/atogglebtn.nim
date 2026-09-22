@@ -215,10 +215,13 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
 
 
         # text::::::::::::::::::::::::::
-        var surface = this.pgui.fonts["default"].renderUtf8Shaded(
-                    this.text.cstring,
-                    this.styleCache[this.activeStyle].color,
-                    this.styleCache[this.activeStyle].backGroundColor)
+        var surface = this.pgui.fonts[
+                                    this.styleCache[this.activeStyle].font
+                                  ].fontPtr.renderUtf8Blended(
+                                      this.text,
+                                      #this.styleCache[this.activeStyle].color,
+                                      buttonTextColor(this.styleCache[this.activeStyle].backGroundColor),
+                                      )
 
         var texture = sdl.createTextureFromSurface(this.window.renderer, surface)
 
@@ -226,7 +229,7 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
         # get font heigth
         var fh = this.pgui.fonts[
                     this.styleCache[this.activeStyle].font
-                    ].fontHeight() + 2
+                    ].fontPtr.fontHeight() + 2
         # center
         if canvasRect.h > fh:
           canvasRect.y = (canvasRect.h - fh) div 2
@@ -259,10 +262,13 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
         discard this.window.renderer.drawRect(addr(canvasRect))
 
         # text::::::::::::::::::::::::::
-        var surface = this.pgui.fonts["default"].renderUtf8Shaded(
-                    this.text,
-                    this.styleCache[this.activeStyle].backGroundColor,
-                    this.styleCache[this.activeStyle].color)
+        var surface = this.pgui.fonts[
+                                    this.styleCache[this.activeStyle].font
+                                  ].fontPtr.renderUtf8Blended(
+                                      this.text,
+                                      #this.styleCache[this.activeStyle].color,
+                                      buttonTextColor(this.styleCache[this.activeStyle].backGroundColor),
+                                      )
 
         var texture = sdl.createTextureFromSurface(this.window.renderer, surface)
 
@@ -270,7 +276,7 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
         # get font heigth
         var fh = this.pgui.fonts[
                     this.styleCache[this.activeStyle].font
-                    ].fontHeight() + 2
+                    ].fontPtr.fontHeight() + 2
         # center
         if canvasRect.h > fh:
           canvasRect.y = (canvasRect.h - fh) div 2

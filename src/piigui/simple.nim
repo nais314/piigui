@@ -27,17 +27,36 @@ const debug = 1
  ######  ########  ######## 
  ]#
 
-# a default font embedded
-const FontDataResource = staticRead("../assets/agave_regular_mono_nerd.ttf")
+# ===================================================
+#* a default font embedded
+# ===================================================
 
-proc loadFontDataResource*(ptsize: cint): FontPtr =
-  #TODO: load on display change event
-  #TODO: load, but ptsize constrained to display DPI
-  # 16pt is a common baseline for UI text at 96 DPI / 1x scaling
-  let rw = sdl.rwFromConstMem(FontDataResource.cstring, FontDataResource.len.cint)
+const 
+  #RegularMono_FontDataResource = staticRead("../assets/agave_regular_mono_nerd.ttf")
+  RegularMono_FontResrc = staticRead("../assets/AgaveNerdFontMono-Regular.ttf")
+  BoldMono_FontResrc = staticRead("../assets/AgaveNerdFontMono-Bold.ttf")
+
+
+# 16pt is a common baseline for UI text at 96 DPI / 1x scaling
+proc load_RegularMono_FontResrc*(ptsize: cint, str:string): FontPtr =
+  let rw = sdl.rwFromConstMem(RegularMono_FontResrc.cstring, RegularMono_FontResrc.len.cint)
   result = ttf.openFontRW(rw, freesrc = 1, ptsize)
 
-###########################################
+proc load_BoldMono_FontResrc*(ptsize: cint, str:string=""): FontPtr =
+  let rw = sdl.rwFromConstMem(BoldMono_FontResrc.cstring, BoldMono_FontResrc.len.cint)
+  result = ttf.openFontRW(rw, freesrc = 1, ptsize)
+
+proc load_H2_FontResrc*(ptsize: cint, str:string=""): FontPtr =
+  let rw = sdl.rwFromConstMem(BoldMono_FontResrc.cstring, BoldMono_FontResrc.len.cint)
+  result = ttf.openFontRW(rw, freesrc = 1, ptsize)
+
+proc load_H1_FontResrc*(ptsize: cint, str:string=""): FontPtr =
+  let rw = sdl.rwFromConstMem(RegularMono_FontResrc.cstring, RegularMono_FontResrc.len.cint)
+  result = ttf.openFontRW(rw, freesrc = 1, ptsize) 
+
+# ===================================================
+#* INITIALIZE SDL
+# ===================================================
 
 proc simpleSDLInit*(pgui: Pgui): bool =
   # Init SDL
@@ -54,7 +73,9 @@ proc simpleSDLInit*(pgui: Pgui): bool =
   if img.init(img.IMG_INIT_PNG or img.IMG_INIT_JPG) == 0:
     return false
 
-  # Init SDL_TTF
+  # ---------------------------------------------------
+  #* Init SDL_TTF
+  # ---------------------------------------------------
   if ttf.ttfInit() == SdlError: 
     echo "Can't initialize TTF: ", sdl.getError()
     return false
@@ -62,7 +83,7 @@ proc simpleSDLInit*(pgui: Pgui): bool =
   #[var
     font = ttf.openFont(os.getAppDir() & os.DirSep & "assets" & os.DirSep & "agave_regular_mono_nerd.ttf", 16) ]#
 
-  var font = loadFontDataResource(16) # 16pt is a common baseline for UI text at 96 DPI / 1x scaling
+  var font = load_RegularMono_FontResrc(16, "") # 16pt is a common baseline for UI text at 96 DPI / 1x scaling
 
   when debug > 0:
     # TEST WIDTH
@@ -76,10 +97,38 @@ proc simpleSDLInit*(pgui: Pgui): bool =
     #sdl.delay(1000) # debug
 
   #:
-  pgui.fonts = newTable[string, ttf.FontPtr](8)
-  pgui.fonts["default"] = font
+  #[ pgui.fonts = newTable[string, FontObject](8)
+  pgui.fonts["default"] = new FontObject
+  pgui.fonts["default"].fontPtr = font
+  pgui.fonts["default"].ptsize = 16
+  pgui.fonts["default"].ttfPath = "" ]#
+  for i in 1..4: pgui.fonts.add(new FontObject)
 
-  #pgui.font_normal = font #! REMOVE
+  pgui.fonts[0].loader = load_RegularMono_FontResrc
+  pgui.fonts[1].loader = load_BoldMono_FontResrc
+  pgui.fonts[2].loader = load_H2_FontResrc
+  pgui.fonts[3].loader = load_H1_FontResrc
+
+  pgui.fonts[0].fontPtr = font
+  pgui.fonts[0].ptsize = 16
+  pgui.fonts[0].ttfPath = ""
+
+  font = load_BoldMono_FontResrc(16,"")
+  pgui.fonts[1].fontPtr = font
+  pgui.fonts[1].ptsize = 16
+  pgui.fonts[1].ttfPath = ""
+
+  font = load_H2_FontResrc(20,"")
+  pgui.fonts[2].fontPtr = font
+  pgui.fonts[2].ptsize = 16
+  pgui.fonts[2].ttfPath = ""
+
+  font = load_H1_FontResrc(24,"")
+  pgui.fonts[3].fontPtr = font
+  pgui.fonts[3].ptsize = 16
+  pgui.fonts[3].ttfPath = ""
+
+
 
   # TODO may initDOM could create window if needd??
   #[ let window1 = newSimpleWindow(
@@ -108,8 +157,10 @@ proc simpleSDLInit*(pgui: Pgui): bool =
 
 # Shutdown sequence
 proc exit*(pgui: Pgui) =
+  pgui.destroyFonts()
   pgui.renderer.destroyRenderer()
   pgui.window.destroyWindow()
+  
   ttf.ttfQuit()
   img.quit()
   #sdl.logInfo(sdl.LogCategoryApplication, "SDL shutdown completed")
@@ -262,14 +313,14 @@ proc closeGui*(pgui: Pgui) =
   sdl.quit()
 
 
-
+#[ 
 template rootElem*(pgui:Pgui):DivRef=
   pgui.activeWindow.rootElem
 
 template elems*(this:DivRef):seq[DivRef]=
   this.layers[0].elems
-
-
+ ]#
+#[ 
 proc addEventListener*(
       elems:seq[DivRef],
       evtname:string,
@@ -309,4 +360,4 @@ proc trigger*(elems:seq[DivRef], evtname:string ):bool=
       if controll.listeners[i].name == evtname:
         for j in 0..controll.listeners[i].actions.high:
           controll.listeners[i].actions[j](controll)
-        result = true
+        result = true ]#

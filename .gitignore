@@ -17,3 +17,6 @@ nimbledeps/
 *.swp
 .vscode
 
+# Files
+doc/review.md
+

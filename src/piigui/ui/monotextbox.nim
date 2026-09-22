@@ -251,7 +251,7 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
       # get font heigth
       var fh = this.pgui.fonts[
                   this.styleCache[this.activeStyle].font
-                  ].fontHeight() + 2
+                  ].fontPtr.fontHeight() + 2
 
       if canvasRect.h > fh:
         canvasRect.y = (canvasRect.h - fh) div 2

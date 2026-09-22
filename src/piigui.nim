@@ -84,14 +84,34 @@ proc getNextGlobalID*(): uint =
 # TODO: scale-up: multiply font sizes, pixel sizes 
 # TODO:   according to a design time window size or user value
 
+#[ 
+######## ######## ##     ## ########  ##          ###    ######## ########  ######  
+   ##    ##       ###   ### ##     ## ##         ## ##      ##    ##       ##    ## 
+   ##    ##       #### #### ##     ## ##        ##   ##     ##    ##       ##       
+   ##    ######   ## ### ## ########  ##       ##     ##    ##    ######    ######  
+   ##    ##       ##     ## ##        ##       #########    ##    ##             ## 
+   ##    ##       ##     ## ##        ##       ##     ##    ##    ##       ##    ## 
+   ##    ######## ##     ## ##        ######## ##     ##    ##    ########  ######  
+ ]#
+#======================================
+#*  TEMPLATES
+#======================================
+## templates to ease typing and
+## make src code readable
+
 template activeWindow*(pgui): PgWindow =
   pgui.windows[pgui.currentWindowId]
 
 template renderer*(pgui: Pgui): sdl.RendererPtr =
-  ## template to ease typing and
-  ## make src code readable
-  pgui.activeWindow.renderer
+  pgui.windows[pgui.currentWindowId].renderer
+  #pgui.activeWindow.renderer
 
+template rootElem*(pgui:Pgui):DivRef=
+  pgui.windows[pgui.currentWindowId].rootElem
+  #pgui.activeWindow.rootElem
+
+template elems*(this:DivRef):seq[DivRef]=
+  this.layers[0].elems
 
 
 #[ 
@@ -103,6 +123,9 @@ template renderer*(pgui: Pgui): sdl.RendererPtr =
 ##       ##     ##    ##    ##       ##    ##  ##    ## 
 ######## ##     ##    ##    ######## ##     ##  ######  
 ]#
+#======================================
+#*  LAYERS
+#======================================
 #TODO
 
 #[ proc newLayer*(this:DivRef,
@@ -128,7 +151,9 @@ proc newLayer*(this:DivRef,
 ##         ## ##   ##       ##   ###    ##    ##    ## 
 ########    ###    ######## ##    ##    ##     ######  
 ]#
-
+#======================================
+#*  EVENTS
+#======================================
 proc default_onHover*(this:DivRef){.nosinks.}=
   const debug = 1
   if this.pgui.mouseSource == nil: # else dragover
@@ -242,18 +267,20 @@ proc parent_onDragOver*(this:DivRef){.nosinks.}=
 #..................................................
 
 
+
+
 #[ 
-      ########  #### ##     ## 
-      ##     ##  ##  ##     ## 
-      ##     ##  ##  ##     ## 
-      ##     ##  ##  ##     ## 
-      ##     ##  ##   ##   ##  
-      ##     ##  ##    ## ##   
-      ########  ####    ###    
+ ######   ######  ########   #######  ##       ##       
+##    ## ##    ## ##     ## ##     ## ##       ##       
+##       ##       ##     ## ##     ## ##       ##       
+ ######  ##       ########  ##     ## ##       ##       
+      ## ##       ##   ##   ##     ## ##       ##       
+##    ## ##    ## ##    ##  ##     ## ##       ##       
+ ######   ######  ##     ##  #######  ######## ######## 
  ]#
-
-
-
+#======================================
+#*  SCROLLING
+#======================================
 
 proc scrollOffset*(this:DivRef): tuple[x,y:int] =
   ## sum of scrollX/scrollY of all scrollable ancestors.
@@ -321,7 +348,18 @@ proc visibleClipRect*(this: DivRef, scrollX, scrollY: int): sdl.Rect =
           w: (maxX - minX + 1).cint,
           h: (maxY - minY + 1).cint)
 
-
+#[ 
+      ########  #### ##     ## 
+      ##     ##  ##  ##     ## 
+      ##     ##  ##  ##     ## 
+      ##     ##  ##  ##     ## 
+      ##     ##  ##   ##   ##  
+      ##     ##  ##    ## ##   
+      ########  ####    ###    
+ ]#
+#======================================
+#*  DivRef
+#====================================== 
 proc drawDivRef*(this:DivRef, scrollX, scrollY:int)=
   const debug = 0
 
@@ -422,7 +460,7 @@ proc drawDivRef*(this:DivRef, scrollX, scrollY:int)=
                       fontBgColor.g.addr,
                       fontBgColor.b.addr,
                       fontBgColor.a.addr)
-        var surface = this.pgui.fonts["default"].renderUtf8Shaded(
+        var surface = this.pgui.fonts["default"].fontPtr.renderUtf8Shaded(
                       this.name,
                       fontColor,
                       fontBgColor)
@@ -568,6 +606,9 @@ proc newDiv*(parent: DivRef,
 ##       ##     ##    ##    ##     ## ##     ##    ##    
 ######## ##     ##    ##     #######   #######     ##    
  ]#
+#======================================
+#*  LAYOUT
+#====================================== 
 proc row*(parent: DivRef,
              layer:int = 0,
              name: string = "",
@@ -690,7 +731,9 @@ template hBox*(args: varargs[untyped]): untyped =
 ##    ##  ##     ## ##     ##    ##    
 ##     ##  #######   #######     ##    
  ]#
-
+#======================================
+#*  RootElem
+#====================================== 
 proc newRoot*(
     win:PgWindow,
     name:string="",
@@ -768,7 +811,9 @@ proc newRoot*(
  ]#
 
 
-
+#======================================
+#*  WINDOW
+#====================================== 
 proc newWindow*(pgui:Pgui,
                 title: cstring,
                 x: cint = sdl.SDL_WINDOWPOS_UNDEFINED,
@@ -837,7 +882,9 @@ proc newWindow*(pgui:Pgui,
  ]#
 
 
-
+#======================================
+#*  DRAW DOM
+#====================================== 
 proc drawDOMImpl(pgui:Pgui, r:DivRef, scrollX, scrollY:int)=
   ## draw the tree, carrying the accumulated scroll offsets of the
   ## scrollable ancestors down to every element.
@@ -891,8 +938,9 @@ proc refreshTextureCache*(rootElem: DivRef)=
 
 
 
-#..................................
-
+#======================================
+#*  SCALING
+#====================================== 
 proc onScaleDown*(this: DivRef)=
   ## for manual scaling of gui
   this.window.scale = clampScale(this.window.scale - 0.1)
@@ -913,7 +961,9 @@ proc onScaleUp*(this: DivRef)=
 ##    ##  ##          ##    ##       ##       ##       ##     ## 
  ######   ########    ##    ######## ######## ######## ##     ## 
  ]#
-
+#======================================
+#*  GET ELEM
+#====================================== 
 # todo SdlWindowId
 proc getElementAtCoord*(root: DivRef, x,y:int): DivRef =
   ## gets element clicked on
@@ -978,6 +1028,10 @@ proc getElementAtCoord*(root: DivRef, x,y:int): DivRef =
 ]#
 
 
+# ===================================================
+#* FONT
+# ===================================================
+
 proc createUTF8_Shaded*(font: ttf.FontPtr,
                         str:string,
                         fontColor,
@@ -988,36 +1042,49 @@ proc createUTF8_Shaded*(font: ttf.FontPtr,
               fontColor,
               fontBgColor)
 
+proc closeAllFonts*(pgui: Pgui) =
+  for _, font in pgui.fonts:
+    if font.fontPtr != nil:
+      ttf.close(font.fontPtr)
+  pgui.fonts.setLen(0)
+template destroyFonts*(pgui: Pgui) = closeAllFonts(pgui)
 
 
-proc addEventListener*(controll:DivRef, evtname:string, fun:proc(source:DivRef):void)=
+# ===================================================
+#* EVENT HANDLERS
+# ===================================================
+
+proc addEventListener*(
+        this:DivRef,
+        evtname:string,
+        fun:proc(source:DivRef):void)=
   var exists = false
   var newListener: Listener
-  for i in 0..controll.listeners.high:
-    if controll.listeners[i].name == evtname:
-      controll.listeners[i].actions.add(fun)
+  for i in 0..this.listeners.high:
+    if this.listeners[i].name == evtname:
+      this.listeners[i].actions.add(fun)
       exists = true
   if not exists:
     newListener.name = evtname
     newListener.actions = @[]
     newListener.actions.add(fun)
-    controll.listeners.add(newListener)
+    this.listeners.add(newListener)
 
 
-proc removeEventListener*(controll:DivRef, evtname:string, fun:proc(source:DivRef):void)=
-  for i in 0..controll.listeners.high:
-    if controll.listeners[i].name == evtname:
-      for j in 0..controll.listeners[i].actions.high:
-        if controll.listeners[i].actions[j] == fun:
-          controll.listeners[i].actions.del(j)
+proc removeEventListener*(this:DivRef, evtname:string, fun:proc(source:DivRef):void)=
+  for i in 0..this.listeners.high:
+    if this.listeners[i].name == evtname:
+      for j in 0..this.listeners[i].actions.high:
+        if this.listeners[i].actions[j] == fun:
+          this.listeners[i].actions.del(j)
 
 
-proc trigger*(controll:DivRef, evtname:string ):bool{.discardable.}=
+proc trigger*(this:DivRef, evtname:string ):bool{.discardable.}=
   result = false
-  for i in 0..controll.listeners.high:
-    if controll.listeners[i].name == evtname:
-      for j in 0..controll.listeners[i].actions.high:
-        controll.listeners[i].actions[j](controll)
+  for i in 0..this.listeners.high:
+    if this.listeners[i].name == evtname:
+      for j in 0..this.listeners[i].actions.high:
+        this.listeners[i].actions[j](this)
       result = true
 
 
@@ -1030,6 +1097,56 @@ proc trigger*(pgui:Pgui, evtname:string ):bool{.discardable.}=
       result = true
 #..............
 
+#--------------------------------------
+# Add event listeners to multiple elems
+#--------------------------------------
+proc addEventListener*(
+      elems:seq[DivRef],
+      evtname:string,
+      fun:proc(source:DivRef):void)=
+  var exists = false
+  var newListener: Listener
+  for controll in elems:
+    for i in 0..controll.listeners.high:
+      if controll.listeners[i].name == evtname:
+        controll.listeners[i].actions.add(fun)
+        exists = true
+    if not exists:
+      newListener.name = evtname
+      newListener.actions = @[]
+      newListener.actions.add(fun)
+      controll.listeners.add(newListener)
+
+
+proc removeEventListener*(
+        elems:seq[DivRef],
+        evtname:string,
+        fun:proc(source:DivRef):void)=
+  for control in elems:
+    for i in countdown(control.listeners.high, 0):
+      if control.listeners[i].name == evtname:
+        for j in countdown(control.listeners[i].actions.high, 0):
+          if control.listeners[i].actions[j] == fun:
+            control.listeners[i].actions.del(j)
+        if control.listeners[i].actions.len == 0:
+          control.listeners.del(i)
+
+
+proc trigger*(elems:seq[DivRef], evtname:string ):bool=
+  result = false
+  for controll in elems:
+    for i in 0..controll.listeners.high:
+      if controll.listeners[i].name == evtname:
+        for j in 0..controll.listeners[i].actions.high:
+          controll.listeners[i].actions[j](controll)
+        result = true 
+
+
+
+
+#--------------------------------------
+# Add timed gui events
+#--------------------------------------
 
 proc addTimedEvent*(pgui: Pgui,
                     elem: DivRef,
@@ -1113,6 +1230,9 @@ proc runTimedEvents*(pgui: Pgui) =
 
 #..............
 
+# ===================================================
+#* DOM MANIPULATION
+# ===================================================
 
 proc changeWindowRecursive(this:DivRef, win:PgWindow)=
   ## helper for copyElem

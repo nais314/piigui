@@ -1,11 +1,14 @@
-# TODO LIST
+# TODO LIST AND IDEA BOX
 
 ## TODO
+
+- fonts should be property of window for multi screen multi dpi
 
 - types.nim
   - #borderWidth*:tuple[top,right,bottom,left:int]
   - #background*:
   - layer:int
+  - PositionKind
 
 - piigui.nim
   - recalcDOM*(pgui:Pgui)=
@@ -30,12 +33,6 @@ like an LCD screen. the characters can be modified individually.
 - styles:
   - default: fg, bg, focus
 
-- ui scaling:
-  - BaselineDPI: float = 96.0  #TODO the "1.0 scale" reference point (same convention as CSS)
-  - recalcScaling - onScalingChange: modified recalcDOM, if muPx then w=w x scale; h=h x scale
-  - type.nim PgWindow.scale*:float=1.0
-  - DivObj w_unscaled*, h_unscaled*:int # scaling system stores original w h values
-
 - DivObj and scrolling
 
     ```# generic begin-state for drags (saved once per drag in default_onDragStart)
@@ -44,7 +41,7 @@ like an LCD screen. the characters can be modified individually.
 
 ### ui elements
 
-- border drawing
+- border drawing `-[panel name]---[*]-`
 
 ## DOING
 
@@ -52,6 +49,13 @@ like an LCD screen. the characters can be modified individually.
 
 - DONE: vhbox -> recalcVbox & recalcHBox
 - DONE: gui element timed events (blinking)
+
+- ui scaling:
+  - BaselineDPI: float = 96.0  #TODO the "1.0 scale" reference point (same convention as CSS)
+  - recalcScaling - onScalingChange: modified recalcDOM, if muPx then w=w x scale; h=h x scale
+  - type.nim PgWindow.scale*:float=1.0
+  - DivObj w_unscaled*, h_unscaled*:int # scaling system stores original w h values
+
 
 
 One thing I preserved but you may want to fix later

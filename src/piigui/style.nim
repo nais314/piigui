@@ -14,6 +14,14 @@ import locks
 
 ###########################################
 
+##[
+    i dont create the option for multiple stylesheets,
+    the storing should be like wordpress stores its database
+    with "wp_" prefix.
+    so a "blue_", "admin_" styleSheet can be stored in 
+    the only one stylsheet.
+    it keeps it simple
+]##
 # TODO: add default hover style, and add to controlls!
 
 
@@ -45,7 +53,7 @@ let clearColor* = sdl.Color((r:50'u8,g:50'u8,b:50'u8,a:0'u8))
 let btnColor* = rgbaColor(r=0,g=0,b=0,a=255)
 let bgColor* = rgbaColor(r=200,g=200,b=184,a=255)
 
-var fontTable* = newTable[string, ttf.FontPtr](8)
+#var fontTable* = newTable[string, ttf.FontPtr](8)
 
 var defaultSST* = newStyleSheetRef_Tbl()
 
@@ -61,7 +69,7 @@ defaultSST["rootStyle"] = StyleSheetRef(
   spacing: -1,
   color: btnColor, #sdl.Color((r:255'u8,g:255'u8,b:255'u8,a:255'u8)),
   backGroundColor: bgColor, #sdl.Color((r:200'u8,g:186'u8,b:163'u8,a:255'u8)),
-  font:"default",
+  font:0, # Regular Mono font, 16pt
   overFlow: ofScroll,
   #position: posAbsolute
   padding: -1
@@ -95,8 +103,17 @@ defaultSST["column"] = StyleSheetRef(
   padding: -1
 )
 
-#GC_ref(defaultSST)
 
+
+defaultSST["bold"] = StyleSheetRef(
+  font:1
+)
+defaultSST["H2"] = StyleSheetRef(
+  font:2
+)
+defaultSST["H1"] = StyleSheetRef(
+  font:3
+)
 
 
 
@@ -182,6 +199,8 @@ proc recalcStyle*(this:DivRef, recursive:bool=false){.gcsafe.}=
   ## - elem styles
   ## 
   ## + pseudo styles if any
+  const debug = 0
+
   if this.styleCache == nil: return # e.g. bare BRElem line-break markers
   {.gcsafe.}:
     #[ if this.pseudoStyles == nil:
@@ -202,12 +221,16 @@ proc recalcStyle*(this:DivRef, recursive:bool=false){.gcsafe.}=
       nameStyle = newStyleSheet()
 
     
-    #[ this.styleCache.clear()
-    this.styleCache["default"] = newStyleSheet() #! start
-    this.styleCache["default"] <- defaultSST["rootStyle"] ]#
+    #--------------------------------------------
+    #* INIT STYLE CACHE - ELEM STYLE
+    #--------------------------------------------
     this.styleCache.init()
 
-    #* type style ***********
+
+    #--------------------------------------------
+    #* CUMULATE STYLES and PSEUDO STYLES
+    #--------------------------------------------
+
     for key in defaultSST.keys():
 
       if key == "*":
@@ -222,7 +245,7 @@ proc recalcStyle*(this:DivRef, recursive:bool=false){.gcsafe.}=
                 this.styleCache[pkey] <- styleForAll
               this.styleCache[pkey] <- defaultSST[key].pseudoStyles[pkey]
   
-      #......................
+      #*.........................................
 
       if key == this.typeName:
         #this.styles.add((name:key, style: defaultSST[key]))
@@ -237,12 +260,8 @@ proc recalcStyle*(this:DivRef, recursive:bool=false){.gcsafe.}=
                 this.styleCache[pkey] <- typeStyle
               this.styleCache[pkey] <- defaultSST[key].pseudoStyles[pkey]
 
-      #[ if key.len > this.typeName.len:
-        if key[0..this.typeName.len] == this.typeName & ":" :
-          #this.pseudoStyles.add(key[6..key.high], defaultSST[key])
-          typePseudoStyles.addOrUpdate(key[this.typeName.len .. key.high], defaultSST[key]) ]#
 
-      #......................
+      #*.........................................
 
       if key == this.group:
         #pseudoStyles.addOrUpdate("default", defaultSST[key])
@@ -257,14 +276,8 @@ proc recalcStyle*(this:DivRef, recursive:bool=false){.gcsafe.}=
                 this.styleCache[pkey] <- groupStyle
               this.styleCache[pkey] <- defaultSST[key].pseudoStyles[pkey]
 
-      #[ # "groupname:hover"
-      if key.len > this.group.len: #eg: buttonGroup:hover
-        if key[0..this.group.len] == this.group & ':':
-          groupPseudoStyles.addOrUpdate(
-                key[this.group.len + 1 .. key.high],
-                defaultSST[key]) ]#
+      #*.........................................
 
-      #......................
 
       if key == this.name:
         #echo "###### ", key
@@ -286,37 +299,34 @@ proc recalcStyle*(this:DivRef, recursive:bool=false){.gcsafe.}=
                 this.styleCache[pkey] <- nameStyle # hint: color
               this.styleCache[pkey] <- defaultSST[key].pseudoStyles[pkey]
             #echo "###### "
-        else: echo " NOPSEUDOSTYLES ------"
+        else: 
+          discard
+          when debug > 1: echo " NOPSEUDOSTYLES ------"
 
-      #[ if key.len > this.name.len: #eg: mybutton:hover
-        if key[0..this.name.len] == this.name & ':':
 
-          let pseudoStyleName = key[this.name.len + 1 .. key.high]
-          if (pseudoStyleName == "even" and this.nthChild mod 2 == 0) or
-            ( pseudoStyleName == "odd" and this.nthChild mod 2 == 1):
 
-              nameStyle = defaultSST[key]
-          
-          else:
-            namedPseudoStyles.addOrUpdate(pseudoStyleName, defaultSST[key]) ]#
-
-    #.........................................
+      #*.........................................
   
-    # parent
+
+
+    #--------------------------------------------
+    #* ASSEMBLE THE STYLE -- ADD ALL STYLES
+    #--------------------------------------------
+    #* parent
     if this.parent != nil:
       #this.styleCache["default"] <- this.parent.pseudoStyles["default"]
       this.styleCache["default"] <- this.parent.styleCache["default"]
 
-    # same type
+    #* same type
     this.styleCache["default"] <- typeStyle
 
-    # logical group
+    #* logical group
     this.styleCache["default"] <- groupStyle
 
-    # name == its own style
+    #* name == its own style
     this.styleCache["default"] <- nameStyle
 
-    # "classes"
+    #* "classes"
     for style in this.styles:
       this.styleCache["default"] <- style.style
 
@@ -324,8 +334,10 @@ proc recalcStyle*(this:DivRef, recursive:bool=false){.gcsafe.}=
     this.styleCache["default"] <- this.inlineStyle
 
 
-    #.........................................
-    # pseudostyles
+
+    #--------------------------------------------
+    #* pseudostyles
+    #--------------------------------------------
     if pseudoStylesForAll.len > 1:
       for key in pseudoStylesForAll.keys:
         if key != "default":
@@ -462,6 +474,7 @@ proc setActiveStyle*(this:DivRef, styleName:string)=
         this.prevStyle = this.activeStyle
         this.activeStyle = styleName
         this.redrawFlag = 1
+    #echo repr this.styleCache
 #[ proc setDefaultStyle*(this:DivRef)=
   if this != nil:
     if this.prevStyle != "":
