@@ -307,6 +307,8 @@ proc closeGui*(pgui: Pgui) =
   pgui.guiTimedEvents.setLen(0)
   pgui.renderer.destroyRenderer()
   pgui.window.destroyWindow()
+  for i in 0..pgui.fonts.high:
+    ttf.close(pgui.fonts[i].fontPtr)
   ttf.ttfQuit()
   img.quit()
   #sdl.logInfo(sdl.LogCategoryApplication, "SDL shutdown completed")

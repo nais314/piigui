@@ -7,8 +7,8 @@ import
 import piigui
 import piigui/[types,style, simple, hidevents]
 import piigui/layout/flex
-import piigui/layout/recalcH as recalcHMod
-import piigui/layout/recalcV as recalcVMod
+import piigui/layout/recalcH
+import piigui/layout/recalcV
 
 import piigui/ui/[label, dosbtn, atogglebtn, gradbtn]
 
@@ -22,7 +22,7 @@ import os
 import unicode
 
 ###########################################
-
+#TODO: toggle button not active at start
 
 var gui = newSimpleGui()
 gui.rootElem.setPadding(10)
@@ -166,6 +166,7 @@ label1.value = "GOMBAAAAAAA"
 rootSSRT["Label1"]= newStyleSheet()
 rootSSRT["Label1"].color = (r:230, g:230, b:0, a:255)
 rootSSRT["Label1"].backGroundColor = transparentColor
+rootSSRT["Label1"].font = 2
 
 rootSSRT["Label1"].addNewPseudoStyle("blink")
 rootSSRT["Label1"].pseudoStyles["blink"].color = (r:0, g:0, b:0, a:255)

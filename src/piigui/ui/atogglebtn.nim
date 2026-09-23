@@ -135,6 +135,9 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
     # ancestors' on-screen rects. It must clip ONLY the final on-screen copy,
     # not the texture-local rendering below.
     var clipRect = visibleClipRect(this, scrollXArg, scrollYArg)
+    if clipRect.w == 0 or clipRect.h == 0:
+      #! off-screen: skip render; redrawFlag stays set so it repaints when visible again
+      return
     # .............................
 
     # canvasRect is the rect we can paint
@@ -214,35 +217,37 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
 
 
         # text::::::::::::::::::::::::::
-        var surface = this.pgui.fonts[
-                                    this.styleCache[this.activeStyle].font
-                                  ].fontPtr.renderUtf8Blended(
-                                      this.text,
-                                      #this.styleCache[this.activeStyle].color,
-                                      buttonTextColor(this.styleCache[this.activeStyle].backGroundColor),
-                                      )
+        if this.text.len > 0:
+          var surface = this.pgui.fonts[
+                                      this.styleCache[this.activeStyle].font
+                                    ].fontPtr.renderUtf8BlendedWrapped(
+                                        this.text.cstring,
+                                        #this.styleCache[this.activeStyle].color,
+                                        buttonTextColor(this.styleCache[this.activeStyle].backGroundColor),
+                                        canvasRect.w.uint32
+                                        )
 
-        var texture = sdl.createTextureFromSurface(this.window.renderer, surface)
+          if surface == nil:
+            #! font render failed: release target/clip before bailing, keep redrawFlag set
+            discard sdl.setRenderTarget(this.window.renderer, nil)
+            discard sdl.setClipRect(this.window.renderer, nil)
+            return
 
+          var texture = sdl.createTextureFromSurface(this.window.renderer, surface)
 
-        # get font heigth
-        var fh = this.pgui.fonts[
-                    this.styleCache[this.activeStyle].font
-                    ].fontPtr.fontHeight() + 2
-        # center
-        if canvasRect.h > fh:
-          canvasRect.y = (canvasRect.h - fh) div 2
-          canvasRect.h = fh
-        if canvasRect.w > surface.w:
-          canvasRect.x = (canvasRect.w - surface.w ) div 2
-          canvasRect.w = surface.w
+          # center text on the rendered surface, not the font line height
+          if canvasRect.h > surface.h:
+            canvasRect.y = (canvasRect.h - surface.h) div 2
+            canvasRect.h = surface.h
+          if canvasRect.w > surface.w:
+            canvasRect.x = (canvasRect.w - surface.w) div 2
+            canvasRect.w = surface.w
 
+          discard this.window.renderer.copy(texture,
+            nil, canvasRect.addr)
 
-        discard this.window.renderer.copy(texture,
-          nil, canvasRect.addr)
-
-        sdl.freeSurface(surface)
-        destroyTexture(texture)
+          sdl.freeSurface(surface)
+          destroyTexture(texture)
 
         # ...............................
 
@@ -261,35 +266,37 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
         discard this.window.renderer.drawRect(addr(canvasRect))
 
         # text::::::::::::::::::::::::::
-        var surface = this.pgui.fonts[
-                                    this.styleCache[this.activeStyle].font
-                                  ].fontPtr.renderUtf8Blended(
-                                      this.text,
-                                      #this.styleCache[this.activeStyle].color,
-                                      buttonTextColor(this.styleCache[this.activeStyle].backGroundColor),
-                                      )
+        if this.text.len > 0:
+          var surface = this.pgui.fonts[
+                                      this.styleCache[this.activeStyle].font
+                                    ].fontPtr.renderUtf8BlendedWrapped(
+                                        this.text.cstring,
+                                        #this.styleCache[this.activeStyle].color,
+                                        buttonTextColor(this.styleCache[this.activeStyle].backGroundColor),
+                                        canvasRect.w.uint32
+                                        )
 
-        var texture = sdl.createTextureFromSurface(this.window.renderer, surface)
+          if surface == nil:
+            #! font render failed: release target/clip before bailing, keep redrawFlag set
+            discard sdl.setRenderTarget(this.window.renderer, nil)
+            discard sdl.setClipRect(this.window.renderer, nil)
+            return
 
+          var texture = sdl.createTextureFromSurface(this.window.renderer, surface)
 
-        # get font heigth
-        var fh = this.pgui.fonts[
-                    this.styleCache[this.activeStyle].font
-                    ].fontPtr.fontHeight() + 2
-        # center
-        if canvasRect.h > fh:
-          canvasRect.y = (canvasRect.h - fh) div 2
-          canvasRect.h = fh
-        if canvasRect.w > surface.w:
-          canvasRect.x = (canvasRect.w - surface.w ) div 2
-          canvasRect.w = surface.w
+          # center text on the rendered surface, not the font line height
+          if canvasRect.h > surface.h:
+            canvasRect.y = (canvasRect.h - surface.h) div 2
+            canvasRect.h = surface.h
+          if canvasRect.w > surface.w:
+            canvasRect.x = (canvasRect.w - surface.w) div 2
+            canvasRect.w = surface.w
 
+          discard this.window.renderer.copy(texture,
+            nil, canvasRect.addr)
 
-        discard this.window.renderer.copy(texture,
-          nil, canvasRect.addr)
-
-        sdl.freeSurface(surface)
-        destroyTexture(texture)
+          sdl.freeSurface(surface)
+          destroyTexture(texture)
 
         # ...............................
 

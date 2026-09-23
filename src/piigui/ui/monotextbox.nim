@@ -194,6 +194,9 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
     # ancestors' on-screen rects. It must clip ONLY the final on-screen copy,
     # not the texture-local rendering below.
     var clipRect = visibleClipRect(this, scrollXArg, scrollYArg)
+    if clipRect.w == 0 or clipRect.h == 0:
+      #! off-screen: skip render; redrawFlag stays set so it repaints when visible again
+      return
     #.............................
 
     # canvasRect is the rect we can paint

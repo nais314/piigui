@@ -137,6 +137,9 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
     # ancestors' on-screen rects. It must clip ONLY the final on-screen copy,
     # not the texture-local rendering below.
     var clipRect = visibleClipRect(this, scrollXArg, scrollYArg)
+    if clipRect.w == 0 or clipRect.h == 0:
+      #! off-screen: skip render; redrawFlag stays set so it repaints when visible again
+      return
     # .............................
 
     # canvasRect is the rect we can paint
@@ -271,39 +274,41 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
 
 
         # text::::::::::::::::::::::::::
-        var textBGColor = this.styleCache[this.activeStyle].backGroundColor
-        textBGColor.a = 1 #! patch
+        if this.text.len > 0:
+          var textBGColor = this.styleCache[this.activeStyle].backGroundColor
+          textBGColor.a = 1 #! patch
 
-        var surface = this.pgui.fonts[
-                                    this.styleCache[this.activeStyle].font
-                                  ].fontPtr.renderUtf8Blended(
-                                      this.text,
-                                      #this.styleCache[this.activeStyle].color,
-                                      buttonTextColor(this.styleCache[this.activeStyle].backGroundColor),
-                                      )
+          var surface = this.pgui.fonts[
+                                      this.styleCache[this.activeStyle].font
+                                    ].fontPtr.renderUtf8BlendedWrapped(
+                                        this.text.cstring,
+                                        #this.styleCache[this.activeStyle].color,
+                                        buttonTextColor(this.styleCache[this.activeStyle].backGroundColor),
+                                        paintRect.w.uint32
+                                        )
 
-        var texture = sdl.createTextureFromSurface(this.window.renderer, surface)
-        discard sdl.setTextureBlendMode(texture, sdl.BLENDMODE_BLEND)
+          if surface == nil:
+            #! font render failed: release target/clip before bailing, keep redrawFlag set
+            discard sdl.setRenderTarget(this.window.renderer, nil)
+            discard sdl.setClipRect(this.window.renderer, nil)
+            return
 
+          var texture = sdl.createTextureFromSurface(this.window.renderer, surface)
+          discard sdl.setTextureBlendMode(texture, sdl.BLENDMODE_BLEND)
 
-        # get font heigth
-        var fh = this.pgui.fonts[
-                    this.styleCache[this.activeStyle].font
-                    ].fontPtr.fontHeight() + 2
+          # center text on the rendered surface, not the font line height
+          if paintRect.h > surface.h:
+            paintRect.y = (paintRect.h - surface.h) div 2
+            paintRect.h = surface.h
+          if paintRect.w > surface.w:
+            paintRect.x = (paintRect.w - surface.w) div 2
+            paintRect.w = surface.w
 
-        if paintRect.h > fh:
-          paintRect.y = (paintRect.h - fh) div 2
-          paintRect.h = fh
-        if paintRect.w > surface.w:
-          paintRect.x = (paintRect.w - surface.w ) div 2
-          paintRect.w = surface.w
+          discard this.window.renderer.copy(texture,
+            nil, paintRect.addr)
 
-
-        discard this.window.renderer.copy(texture,
-          nil, paintRect.addr)
-
-        sdl.freeSurface(surface)
-        destroyTexture(texture)
+          sdl.freeSurface(surface)
+          destroyTexture(texture)
         # ...............................
 
 

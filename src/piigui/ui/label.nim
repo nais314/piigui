@@ -150,6 +150,9 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
     # ancestors' on-screen rects. It must clip ONLY the final on-screen copy,
     # not the texture-local rendering below.
     var clipRect = visibleClipRect(this, scrollXArg, scrollYArg)
+    if clipRect.w == 0 or clipRect.h == 0:
+      #! off-screen: skip render; redrawFlag stays set so it repaints when visible again
+      return
     #.............................
 
     # canvasRect is the rect we can paint
@@ -227,24 +230,26 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
         var surface = this.pgui.fonts[
                                   this.styleCache[this.activeStyle].font
                                 ].fontPtr.renderTextBlendedWrapped(
-                                            this.val,
+                                            this.val.cstring,
                                             fontColor,
-                                            0)
+                                            this.w.uint32)
+
+        if surface == nil:
+          #! font render failed: release target/clip before bailing, keep redrawFlag set
+          discard sdl.setRenderTarget(this.pgui.renderer, nil)
+          discard sdl.setClipRect(this.pgui.renderer, nil)
+          return
 
         var texture = sdl.createTextureFromSurface(this.pgui.renderer, surface)
 
-        # get font height
-        var fontHeight = this.pgui.fonts[
-                    this.styleCache[this.activeStyle].font
-                    ].fontPtr.fontHeight() + 2
+        # center text
 
-        # center the text vertically and horizontally
-        if canvasRect.h > fontHeight:
-          canvasRect.y = (canvasRect.h - fontHeight) div 2
-          canvasRect.h = fontHeight
+        if canvasRect.h > surface.h:
+          canvasRect.y = (canvasRect.h - surface.h) div 2
+          canvasRect.h = surface.h
         if canvasRect.w > surface.w:
           canvasRect.x = (canvasRect.w - surface.w) div 2
-          canvasRect.w = surface.w
+          canvasRect.w = surface.w  
 
         discard this.pgui.renderer.copy(texture,
             nil, canvasRect.addr)

@@ -4,7 +4,7 @@ PiiGUI has been developed with assistance from several AI systems,
 including:
 
 - DeepSeek models
-- locally hosted open-weight models
+- locally hosted open-weight models (Gemma4, QWEN)
 - OpenAI models
 - Google Gemini models
 - Anthropic Claude models

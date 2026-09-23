@@ -13,7 +13,12 @@
 - piigui.nim
   - recalcDOM*(pgui:Pgui)=
 
-### complex gui elements, templates
+- styles
+  - pseudostyles helper functions/templates like .focus
+    - if not exists pseudostyle create
+    - return stylesheet
+
+### complex gui elements
 
 - textMatrixArea: a rectangle, it has rows and columns of monospace characters, like a **terminal**, except the scrolling.
 like an LCD screen. the characters can be modified individually.
@@ -21,6 +26,9 @@ like an LCD screen. the characters can be modified individually.
 - support functions, like line, row, news-scroll
 
 - sheetRow: a row of elements, can have background colors like red, green, blue, gray,
+  - even/odd fill - custom addChild, Removechild methods for style change hooks
+
+### templates
 
 - the most basic boilerplate code\
   (create templates for human and ai)

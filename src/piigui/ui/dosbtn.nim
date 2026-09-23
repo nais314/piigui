@@ -141,6 +141,9 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
     # not the texture-local rendering below. Applying it before rendering into
     # textureCache would clip the fill in the wrong coordinate space.
     var clipRect = visibleClipRect(this, scrollXArg, scrollYArg)
+    if clipRect.w == 0 or clipRect.h == 0:
+      #! off-screen: skip render; redrawFlag stays set so it repaints when visible again
+      return
     when debug > 0:
       echo "repr(clipRect) " & this.name
       echo repr(clipRect) & "\n"
@@ -244,27 +247,28 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
         if this.text.len > 0:
           var surface = this.pgui.fonts[
                                     this.styleCache[this.activeStyle].font
-                                  ].fontPtr.renderUtf8Blended(
-                                      this.text,
+                                  ].fontPtr.renderUtf8BlendedWrapped(
+                                      this.text.cstring,
                                       #this.styleCache[this.activeStyle].color,
                                       buttonTextColor(this.styleCache[this.activeStyle].backGroundColor),
+                                      paintRect.w.uint32
                                       )
+
+          if surface == nil:
+            #! font render failed: release target/clip before bailing, keep redrawFlag set
+            discard sdl.setRenderTarget(this.window.renderer, nil)
+            discard sdl.setClipRect(this.window.renderer, nil)
+            return
 
           var texture = sdl.createTextureFromSurface(this.window.renderer, surface)
 
-
-          # get font heigth
-          var fh = this.pgui.fonts[
-                      this.styleCache[this.activeStyle].font
-                      ].fontPtr.fontHeight() + 2
-
-          if paintRect.h > fh:
-            paintRect.y = (paintRect.h - fh) div 2
-            paintRect.h = fh
+          # center text on the rendered surface, not the font line height
+          if paintRect.h > surface.h:
+            paintRect.y = (paintRect.h - surface.h) div 2
+            paintRect.h = surface.h
           if paintRect.w > surface.w:
-            paintRect.x = (paintRect.w - surface.w ) div 2
+            paintRect.x = (paintRect.w - surface.w) div 2
             paintRect.w = surface.w
-
 
           discard this.window.renderer.copy(texture,
             nil, paintRect.addr)
@@ -291,23 +295,26 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
         if this.text.len > 0:
           var surface = this.pgui.fonts[
                                     this.styleCache[this.activeStyle].font
-                                  ].fontPtr.renderUtf8Blended(
-                                      this.text,
+                                  ].fontPtr.renderUtf8BlendedWrapped(
+                                      this.text.cstring,
                                       #this.styleCache[this.activeStyle].color,
                                       buttonTextColor(this.styleCache[this.activeStyle].backGroundColor),
+                                      paintRect.w.uint32
                                       )
+
+          if surface == nil:
+            #! font render failed: release target/clip before bailing, keep redrawFlag set
+            discard sdl.setRenderTarget(this.window.renderer, nil)
+            discard sdl.setClipRect(this.window.renderer, nil)
+            return
 
           var texture = sdl.createTextureFromSurface(this.window.renderer, surface)
           #texture.setAlphaMod(128'u8)
 
-          # get font heigth
-          var fh = this.pgui.fonts[
-                      this.styleCache[this.activeStyle].font
-                      ].fontPtr.fontHeight() + 2
-
-          if paintRect.h > fh:
-            paintRect.y = ((paintRect.h - fh) div 2) + this.shadowSizePx
-            paintRect.h = fh
+          # center text on the rendered surface, not the font line height
+          if paintRect.h > surface.h:
+            paintRect.y = ((paintRect.h - surface.h) div 2) + this.shadowSizePx
+            paintRect.h = surface.h
           if paintRect.w > surface.w:
             paintRect.x = ((paintRect.w - surface.w ) div 2) + this.shadowSizePx
             paintRect.w = surface.w
