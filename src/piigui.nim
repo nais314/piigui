@@ -385,7 +385,7 @@ proc drawDivRef*(this:DivRef, scrollX, scrollY:int)=
 
   # backgroundRect is the rect we can paint
   # after
-  # sdl.setRenderTarget(this.pgui.renderer, this.textureCache) 
+  # sdl.setRenderTarget(this.window.renderer, this.textureCache) 
   var backgroundRect: sdl.Rect
   backgroundRect.x = 0.cint
   backgroundRect.y = 0.cint
@@ -405,8 +405,8 @@ proc drawDivRef*(this:DivRef, scrollX, scrollY:int)=
   #.............................
   # we need to redraw, even if not changed
   if this.redrawFlag == 0 and this.textureCache != nil:
-      discard sdl.setClipRect(this.pgui.renderer, clipRect.addr)
-      discard this.pgui.renderer.copy(
+      discard sdl.setClipRect(this.window.renderer, clipRect.addr)
+      discard this.window.renderer.copy(
           this.textureCache,
           nil, thisRect.addr)
 
@@ -417,7 +417,7 @@ proc drawDivRef*(this:DivRef, scrollX, scrollY:int)=
     if this.textureCache != nil:
       sdl.destroyTexture(this.textureCache)
     this.textureCache = sdl.createTexture(
-      this.pgui.renderer,
+      this.window.renderer,
       sdl.SDL_PIXELFORMAT_UNKNOWN,#PIXELFORMAT_RGBA8888,
       sdl.SDL_TEXTUREACCESS_TARGET,
       this.w.cint, this.h.cint)
@@ -425,13 +425,13 @@ proc drawDivRef*(this:DivRef, scrollX, scrollY:int)=
     discard this.textureCache.setTextureBlendMode(sdl.BLENDMODE_BLEND)
 
     # the elems. texture is the render target x=0 y=0!
-    discard sdl.setRenderTarget(this.pgui.renderer, this.textureCache)
-    this.pgui.renderer.setDrawColor(transparentColor)
-    #discard this.pgui.renderer.clear()
+    discard sdl.setRenderTarget(this.window.renderer, this.textureCache)
+    this.window.renderer.setDrawColor(transparentColor)
+    #discard this.window.renderer.clear()
     #.............................
 
     if this.styleCache[this.activeStyle].backGroundColor != EmptyColor:
-      this.pgui.renderer.setDrawColor(
+      this.window.renderer.setDrawColor(
         this.styleCache[this.activeStyle].backGroundColor)
     when debug > 0:
         if this.styleCache[this.activeStyle].backGroundColor == EmptyColor:
@@ -441,11 +441,11 @@ proc drawDivRef*(this:DivRef, scrollX, scrollY:int)=
             g: uint8 = (rand(127) + 128).uint8
             b: uint8 = (rand(127) + 128).uint8
             a: uint8 = 255
-          discard this.pgui.renderer.setDrawColor(r, g, b, a)
+          discard this.window.renderer.setDrawColor(r, g, b, a)
 
 
     # draw the elem
-    discard this.pgui.renderer.fillRect(addr(backgroundRect))
+    discard this.window.renderer.fillRect(addr(backgroundRect))
 
     #=====================================
 
@@ -455,7 +455,7 @@ proc drawDivRef*(this:DivRef, scrollX, scrollY:int)=
           fontColor = sdl.Color((r:0'u8,g:0'u8,b:0'u8,a:128'u8))
           fontBgColor = sdl.Color((r:0'u8,g:0'u8,b:0'u8,a:0'u8))
 
-        discard this.pgui.renderer.getRenderDrawColor(
+        discard this.window.renderer.getRenderDrawColor(
                       fontBgColor.r.addr,
                       fontBgColor.g.addr,
                       fontBgColor.b.addr,
@@ -472,9 +472,9 @@ proc drawDivRef*(this:DivRef, scrollX, scrollY:int)=
                                 w: surface.w,
                                 h: surface.h)
 
-            var texture = sdl.createTextureFromSurface(this.pgui.renderer, surface)
+            var texture = sdl.createTextureFromSurface(this.window.renderer, surface)
 
-            discard this.pgui.renderer.copy(texture,
+            discard this.window.renderer.copy(texture,
                 nil, srect.addr)
 
             sdl.freeSurface(surface)
@@ -482,16 +482,16 @@ proc drawDivRef*(this:DivRef, scrollX, scrollY:int)=
 
 
     #=====================================
-    discard sdl.setRenderTarget(this.pgui.renderer, nil)
+    discard sdl.setRenderTarget(this.window.renderer, nil)
     # clip only the screen-space copy
-    discard sdl.setClipRect(this.pgui.renderer, clipRect.addr)
-    discard this.pgui.renderer.copy(
+    discard sdl.setClipRect(this.window.renderer, clipRect.addr)
+    discard this.window.renderer.copy(
         this.textureCache,
         nil, thisRect.addr)
 
 
   # reset clipping
-  discard sdl.setClipRect(this.pgui.renderer, nil)
+  discard sdl.setClipRect(this.window.renderer, nil)
 
   this.redrawFlag = 0
 
@@ -751,6 +751,7 @@ proc newRoot*(
   result.parent = nil
   result.pgui = win.pgui
   result.window = win
+  win.redrawFlag = true # fresh tree needs its first frame drawn
 
   result.layers = @[]
   result.layer = -1 # -1 marks the root: it has no parent
@@ -906,6 +907,19 @@ proc drawDOM*(pgui:Pgui, r:DivRef)=
   ## ancestors, so it can be called with any element, not just the root.
   let off = scrollOffset(r)
   drawDOMImpl(pgui, r, off.x, off.y)
+
+proc drawWindows*(pgui:Pgui)=
+  ## redraw and present only the windows flagged dirty.
+  ## Elements resolve their renderer through their own `window`,
+  ## so the active window does not need to be switched here.
+  if pgui == nil:
+    return
+  for _, win in pgui.windows:
+    if not win.redrawFlag or win.rootElem == nil:
+      continue
+    pgui.drawDOM(win.rootElem)
+    win.renderer.present()
+    win.redrawFlag = false
 
 #..................................
 
@@ -1220,6 +1234,10 @@ proc runTimedEvents*(pgui: Pgui) =
       pgui.guiTimedEvents.delete(i)
 
     event.fun(event.elem)
+
+    # a callback may have changed the tree; repaint its window
+    if event.elem != nil and event.elem.window != nil:
+      event.elem.window.redrawFlag = true
 
     # A callback may remove or replace its own event.
     if event.repeat and i < pgui.guiTimedEvents.len and

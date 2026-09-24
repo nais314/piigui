@@ -165,6 +165,7 @@ type
     styleSheet*:StyleSheetRef_Tbl # newStyleSheetRef_Tbl*()
     scale*:float=1.0.float # TODO: implement
     #ddpi*, hdpi*, vdpi*: cfloat # SDL_WINDOWEVENT_MOVED
+    redrawFlag*:bool=false
 
   #------------------------------------------------------
   Layer* = ref object of RootObj

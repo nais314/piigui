@@ -21,6 +21,11 @@ import piigui/[types,style]
 import tables
 
 
+#!FWD
+proc markWindowDirty(pgui:Pgui, windowID:uint32) #!FWD
+proc markElemWindowDirty(elem:DivRef) #!FWD
+
+
 # Event handling
 # Return true on pgui shutdown request, otherwise return false
 proc hid_events*(pgui:Pgui): bool = # exit pgui on true
@@ -40,6 +45,11 @@ proc hid_events*(pgui:Pgui): bool = # exit pgui on true
       #echo repr(e)
       let eventObj = evKeyboard(e)
       pgui.currentWindowId = eventObj.windowID # set activeWindow # todo setter events focus window
+      # keyboard events may change styles; repaint the focused window
+      if pgui.focusElem != nil and pgui.focusElem.window != nil:
+        markElemWindowDirty(pgui.focusElem)
+      else:
+        markWindowDirty(pgui, eventObj.windowID)
       # Exit on Escape key press
       if eventObj.keysym.sym == sdl.K_Escape:
         if pgui.mouseSource != nil:
@@ -78,6 +88,7 @@ proc hid_events*(pgui:Pgui): bool = # exit pgui on true
         eventObj.y)
 
       if eventTarget != nil:
+        markElemWindowDirty(eventTarget)
         # set window - holding eventtarget - active
         #pgui.window = pgui.windows[eventObj.windowID].window
         pgui.currentWindowId = eventObj.windowID
@@ -119,6 +130,7 @@ proc hid_events*(pgui:Pgui): bool = # exit pgui on true
             pgui.windows[ eventObj.windowID ].rootElem,
             eventObj.x, eventObj.y)
       if eventTarget != nil:
+        markElemWindowDirty(eventTarget)
         # D&D:
         pgui.mouseSource = eventTarget
         #[ if eventTarget.onDragStart != nil and # draggable true
@@ -130,9 +142,9 @@ proc hid_events*(pgui:Pgui): bool = # exit pgui on true
         eventTarget.trigger("click") ]#
         if eventTarget.onMouseButtonDown != nil:
           eventTarget.onMouseButtonDown(eventTarget)
-          # please call Elems onFocus method
-          # in eventTarget.onMouseButtonDown
-          # if needed ((for flexibility))
+          ## please call Elems onFocus method
+          ## in eventTarget.onMouseButtonDown
+          ## if needed ((for flexibility))
 
 
     
@@ -145,6 +157,7 @@ proc hid_events*(pgui:Pgui): bool = # exit pgui on true
             eventObj.x, eventObj.y)
       
       if eventTarget != nil:
+        markElemWindowDirty(eventTarget)
         # Default
         if eventTarget.onMouseButtonUp != nil:
           eventTarget.onMouseButtonUp(eventTarget)
@@ -177,6 +190,11 @@ proc hid_events*(pgui:Pgui): bool = # exit pgui on true
     elif e.kind == sdl.MOUSEWHEEL: #! ----- MOUSEWHEEL
       let eventObj = evMouseWheel(e)
       when debug > 0: echo eventObj.wheel
+      # wheel scrolls the hovered element's window
+      if pgui.hoverElem != nil:
+        markElemWindowDirty(pgui.hoverElem)
+      else:
+        markWindowDirty(pgui, eventObj.windowID)
       
       if pgui.hoverElem != nil:
         ## set window - holding eventtarget - active
@@ -210,6 +228,7 @@ proc hid_events*(pgui:Pgui): bool = # exit pgui on true
     elif e.kind == sdl.TEXTINPUT: #! ----- TEXTINPUT
       let eventObj = evTextInput(e)
       when debug > 0: echo eventObj.text
+      markElemWindowDirty(pgui.focusElem)
       #echo eventObj.text
       #textbox1.`value&=` $eventObj.text
       if pgui.focusElem != nil:
@@ -234,6 +253,8 @@ proc hid_events*(pgui:Pgui): bool = # exit pgui on true
           of WINDOWEVENT_EXPOSED:
             when debug > 0:
               echo "WINDOWEVENT_EXPOSED ", eventObj.windowId
+            # the window was uncovered; repaint it
+            markWindowDirty(pgui, eventObj.windowID)
             discard
 
           of WINDOWEVENT_MOVED:
@@ -250,7 +271,7 @@ proc hid_events*(pgui:Pgui): bool = # exit pgui on true
               echo "WINDOWEVENT_RESIZED ", eventObj.windowId, "\n",
                 eventObj.data1, "\n",
                 eventObj.data2, "\n"
-            
+            markWindowDirty(pgui, eventObj.windowID)
             #pgui.windows[eventObj.windowID].recalc()
             var cw,ch:cint
             sdl.getSize(
@@ -270,6 +291,7 @@ proc hid_events*(pgui:Pgui): bool = # exit pgui on true
               echo "WINDOWEVENT_SIZE_CHANGED ", eventObj.windowId, "\n",
                 eventObj.data1, "\n",
                 eventObj.data2, "\n"
+            markWindowDirty(pgui, eventObj.windowID)
             #pgui.windows[eventObj.windowID].recalc()
             var cw,ch:cint
             sdl.getSize(
@@ -288,10 +310,12 @@ proc hid_events*(pgui:Pgui): bool = # exit pgui on true
           of WINDOWEVENT_MAXIMIZED:
             when debug > 0:
               echo "WINDOWEVENT_MAXIMIZED ", eventObj.windowId
+            markWindowDirty(pgui, eventObj.windowID)
             discard
           of WINDOWEVENT_RESTORED:
             when debug > 0:
               echo "WINDOWEVENT_RESTORED ", eventObj.windowId
+            markWindowDirty(pgui, eventObj.windowID)
             discard
           of WINDOWEVENT_ENTER:
             when debug > 0:
@@ -327,4 +351,24 @@ proc hid_events*(pgui:Pgui): bool = # exit pgui on true
             when debug > 0:
               echo "UNKNOWN WINDOW EVENT ", eventObj.windowId
             discard
+
+#--------------------------------------------
+# dirty marking
+#--------------------------------------------
+
+proc markWindowDirty(pgui:Pgui, windowID:uint32)=
+  ## flags a window for redraw. Falls back to the active window when SDL
+  ## does not name one (windowID == 0 or an unknown id).
+  if pgui == nil:
+    return
+  var id = windowID
+  if id == 0 or not pgui.windows.hasKey(id):
+    id = pgui.currentWindowId
+  if pgui.windows.hasKey(id):
+    pgui.windows[id].redrawFlag = true
+
+proc markElemWindowDirty(elem:DivRef)=
+  ## flags the window owning the touched element.
+  if elem != nil and elem.window != nil:
+    elem.window.redrawFlag = true
 

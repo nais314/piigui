@@ -201,7 +201,7 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
 
     # canvasRect is the rect we can paint
     # after
-    # sdl.setRenderTarget(this.pgui.renderer, this.textureCache) 
+    # sdl.setRenderTarget(this.window.renderer, this.textureCache) 
     var canvasRect: sdl.Rect
     canvasRect.x = 0.cint
     canvasRect.y = 0.cint
@@ -222,8 +222,8 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
     #.............................
     # we need to redraw, even if not changed
     if this.redrawFlag == 0 and this.textureCache != nil:
-        discard sdl.setClipRect(this.pgui.renderer, clipRect.addr)
-        discard this.pgui.renderer.copy(
+        discard sdl.setClipRect(this.window.renderer, clipRect.addr)
+        discard this.window.renderer.copy(
             this.textureCache,
             nil, screenRect.addr)
 
@@ -236,7 +236,7 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
       if this.textureCache != nil:
         sdl.destroyTexture(this.textureCache)
       this.textureCache = sdl.createTexture(
-        this.pgui.renderer,
+        this.window.renderer,
         sdl.SDL_PIXELFORMAT_UNKNOWN,#PIXELFORMAT_RGBA8888,
         sdl.SDL_TEXTUREACCESS_TARGET,
         this.w.cint,
@@ -244,9 +244,9 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
       discard this.textureCache.setTextureBlendMode(sdl.BLENDMODE_BLEND)
 
       # the elems. texture is the render target x=0 y=0!
-      discard sdl.setRenderTarget(this.pgui.renderer, this.textureCache)
-      this.pgui.renderer.setDrawColor(transparentColor)
-      discard this.pgui.renderer.clear()
+      discard sdl.setRenderTarget(this.window.renderer, this.textureCache)
+      this.window.renderer.setDrawColor(transparentColor)
+      discard this.window.renderer.clear()
       #.............................
 
 
@@ -261,20 +261,20 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
 
       # draw the elem
       if this.styleCache[this.activeStyle].backGroundColor != EmptyColor:
-        this.pgui.renderer.setDrawColor(
+        this.window.renderer.setDrawColor(
           this.styleCache[this.activeStyle].backGroundColor)
 
-      discard this.pgui.renderer.fillRect(addr(canvasRect))
+      discard this.window.renderer.fillRect(addr(canvasRect))
 
       # draw border
       if this.styleCache[this.activeStyle].borderColor != EmptyColor:
-        this.pgui.renderer.setDrawColor(
+        this.window.renderer.setDrawColor(
           this.styleCache[this.activeStyle].borderColor)
-      discard this.pgui.renderer.drawRect(addr(canvasRect))
+      discard this.window.renderer.drawRect(addr(canvasRect))
 
 
       #=====================================
-      #[ discard this.pgui.renderer.setRenderDrawColor(
+      #[ discard this.window.renderer.setRenderDrawColor(
           this.styleCache[this.activeStyle].backGroundColor) ]#
       # render text --- render text --- render text ---
       var
@@ -282,7 +282,7 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
         fontBgColor = sdl.Color((r:0'u8,g:0'u8,b:0'u8,a:1'u8))
 
       #var surface = this.pgui.font_normal.renderUTF8_Solid(this.name, fontColor)
-      #[ discard this.pgui.renderer.getRenderDrawColor(
+      #[ discard this.window.renderer.getRenderDrawColor(
                     fontBgColor.r.addr,
                     fontBgColor.g.addr,
                     fontBgColor.b.addr,
@@ -305,9 +305,9 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
                           w: surface.w,
                           h: surface.h)
 
-      var texture = sdl.createTextureFromSurface(this.pgui.renderer, surface)
+      var texture = sdl.createTextureFromSurface(this.window.renderer, surface)
 
-      discard this.pgui.renderer.copy(texture,
+      discard this.window.renderer.copy(texture,
           nil, srect.addr)
 
       sdl.freeSurface(surface)
@@ -317,13 +317,13 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
 
       # DRAW CURSOR ................................
       if this.pgui.focusElem == this:
-        this.pgui.renderer.setDrawColor(
+        this.window.renderer.setDrawColor(
             this.styleCache[this.activeStyle].color)
         
         #this.cursorPos = rand(this.val.len).uint
         #this.cursorPos = (this.val.runeLen)
 
-        discard this.pgui.renderer.drawLine(
+        discard this.window.renderer.drawLine(
             cint(this.cursorPos * 8),
             canvasRect.y.cint,
             cint(this.cursorPos * 8),
@@ -332,16 +332,16 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
 
 
       #=====================================
-      discard sdl.setRenderTarget(this.pgui.renderer, nil)
+      discard sdl.setRenderTarget(this.window.renderer, nil)
       # clip only the screen-space copy
-      discard sdl.setClipRect(this.pgui.renderer, clipRect.addr)
-      discard this.pgui.renderer.copy(
+      discard sdl.setClipRect(this.window.renderer, clipRect.addr)
+      discard this.window.renderer.copy(
           this.textureCache,
           nil, screenRect.addr)
 
 
     # reset clipping
-    discard sdl.setClipRect(this.pgui.renderer, nil)
+    discard sdl.setClipRect(this.window.renderer, nil)
 
     this.redrawFlag = 0
 
