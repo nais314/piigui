@@ -1,9 +1,7 @@
 import
-  sdl2 as sdl,
-  sdl2/image as img,
-  sdl2/gfx,
-  sdl2/ttf,
-  std.monotimes, os, tables
+  sdl3 as sdl,
+  sdl3_ttf as ttf,
+  std/monotimes, os, tables
 
 import piigui
 import piigui/[types, style, simple, hidevents]
@@ -23,8 +21,8 @@ quitBtn.inlineStyle.setBackGroundColor(0xDDDDDDFF.HexColor)
 
 proc quitBtnonClick(this:DivRef)=
   var sdlevent: sdl.Event
-  sdlevent.kind = sdl.QuitEvent
-  discard sdl.pushEvent(sdlevent.addr)
+  sdlevent.`type` = sdl.EVENT_QUIT
+  discard sdl.pushEvent(sdlevent)
   echo "quitBtnonClick"
 quitBtn.addEventListener("click", quitBtnonClick)
 
@@ -44,7 +42,7 @@ while not done:
   gui.runTimedEvents()
 
   gui.drawDom(gui.rootElem)
-  gui.renderer.present()
+  discard gui.renderer.present()
 
   # FPS capping
   let endTime = getMonoTime()

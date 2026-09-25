@@ -1,15 +1,19 @@
 
 import
-  sdl2 as sdl,
-  sdl2/image as img,
-  sdl2/gfx,
-  sdl2/ttf
+  sdl3 as sdl,
+  sdl3_ttf as ttf,
+  piigui/sdl3_aliases
 
 import locks
 import tables
 import parseUtils
 
-
+type
+  WindowPtr*   = sdl.Window
+  RendererPtr* = sdl.Renderer
+  TexturePtr*  = sdl.Texture
+  SurfacePtr*  = ptr sdl.Surface
+  FontPtr*     = ttf.Font
 
 const
   BaselineDPI*: cfloat = 96.0  #TODO the "1.0 scale" reference point (same convention as CSS)
@@ -18,8 +22,8 @@ const
 
   DefaultWindowW* = 800 # Window width
   DefaultWindowH* = 600 # Window height
-  DefaultWindowFlags*: cuint = sdl.SDL_WINDOW_SHOWN
-  DefaultRendererFlags*: cint = sdl.Renderer_Accelerated or sdl.Renderer_PresentVsync or sdl.Renderer_TargetTexture
+  DefaultWindowFlags*: sdl.WindowFlags = sdl.WindowFlags(0)
+  DefaultRendererFlags*: cint = 0
 
   EmptyColor* : sdl.Color = (r:0'u8,g:0'u8,b:0'u8,a:0'u8)
 
@@ -148,9 +152,9 @@ type
   FontObject* = ref object of RootObj
     #name*: string
     ptsize*: int
-    fontPtr*: ttf.FontPtr
+    fontPtr*: FontPtr
     ttfPath*: string # "" == load from memory, simple.nim
-    loader*: proc(ptsize:cint, str:string=""): ttf.FontPtr
+    loader*: proc(ptsize:cint, str:string=""): FontPtr
   FontTable* = seq[FontObject]
 
 
@@ -159,8 +163,8 @@ type
   SdlWindowID* = uint32
   PgWindow* = ref object of RootObj
     pgui*:Pgui
-    window*: sdl.WindowPtr
-    renderer*: sdl.RendererPtr
+    window*: WindowPtr
+    renderer*: RendererPtr
     rootElem*:DivRef
     styleSheet*:StyleSheetRef_Tbl # newStyleSheetRef_Tbl*()
     scale*:float=1.0.float # TODO: implement
@@ -237,7 +241,7 @@ type
     onTextInput*: proc(this:DivRef, text:string)
     #...............
 
-    textureCache*: sdl.TexturePtr
+    textureCache*: TexturePtr
 
     ## p.e.: add validation here via "change" event
     ## handle keyboard shortcuts / events
@@ -247,7 +251,7 @@ type
 
   TimedEvent* = object
     elem*: DivRef
-    intervalMs*: int
+    intervalNs*: int64
     nextFireNs*: int64
     repeat*: bool
     fun*: proc(this: DivRef)
@@ -278,7 +282,7 @@ type
     # window and renderer references must be updated
     windows*: Table[uint32, PgWindow] # uses SDL's WindowID
     currentWindowId*: uint32
-    window*: sdl.WindowPtr # Window pointer
+    window*: WindowPtr # Window pointer
     #renderer*: sdl.Renderer # Rendering state pointer
 
     #font_normal*: ttf.FontPtr
@@ -353,6 +357,18 @@ proc getID*(this: DivRef): string =
     result = this.typeName & $this.iD
   else:
     result = this.name & $this.iD
+
+
+
+
+#--------------------------------------------------------
+#* API Compatibility Layer / Backward Compatibility Shim
+#--------------------------------------------------------
+
+proc getSize*(window: PgWindow, w,h: var cint): bool = sdl.getWindowSize(window.window, w, h)
+proc getID*(pgWindow: PgWindow): WindowID = sdl.getWindowID(pgWindow.window)
+
+
 
 
 
@@ -481,7 +497,7 @@ proc addNewPseudoStyle*(parent: StyleSheetRef, childName :string)=
 
 #import styles from styleshhet
 proc `<-`*(t: StyleSheetRef, s: StyleSheetRef)=
-  if s.flexGrow > -1: t.flexGrow = s.flexGrow
+  #if s.flexGrow > -1: t.flexGrow = s.flexGrow
   if s.flexGrowFrom > -1: t.flexGrowFrom = s.flexGrowFrom
   if s.flexDirection != fdUndefined: t.flexDirection = s.flexDirection
   if s.justifyContent != fjcUndefined: t.justifyContent = s.justifyContent

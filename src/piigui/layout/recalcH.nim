@@ -1,9 +1,3 @@
-import
-  sdl2 as sdl,
-  sdl2/image as img,
-  sdl2/gfx,
-  sdl2/ttf
-
 import piigui/types
 
 
@@ -38,7 +32,7 @@ proc recalcH*(this:DivRef, layer:Layer):tuple[w,h:int]=
   when debug > 0 : echo this.name
 
   # Add padding style
-  if padding > 0:
+  if padding > -1:
       availW = this.w - (padding * 2)
       thisX1 = this.x1 + padding
       thisY1 = this.y1 + padding
@@ -98,7 +92,7 @@ proc recalcH*(this:DivRef, layer:Layer):tuple[w,h:int]=
     for elem in layer.elems:
       if elem.w_unit in [muAuto,muStretch]: elem.w = autoW
   else:
-    let autoW = if padding > 0: (this.w - (padding * 2)) else: this.w
+    let autoW = if padding > -1: (this.w - (padding * 2)) else: this.w
     for elem in layer.elems:
       if elem.w_unit in [muAuto,muStretch]: elem.w = autoW
 

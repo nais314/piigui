@@ -1,8 +1,6 @@
 import
-  sdl2 as sdl,
-  sdl2/image as img,
-  sdl2/gfx,
-  sdl2/ttf
+  sdl3 as sdl,
+  sdl3_ttf as ttf
 
 import piigui
 import piigui/[types, style, simple, hidevents]
@@ -109,8 +107,8 @@ for i in 0 ..< nRows:
 if quitCandidate != nil:
   proc quitOnClick(this: DivRef) =
     var sdlevent: sdl.Event
-    sdlevent.kind = sdl.QuitEvent
-    discard sdl.pushEvent(sdlevent.addr)
+    sdlevent.`type` = sdl.EVENT_QUIT
+    discard sdl.pushEvent(sdlevent)
   quitCandidate.addEventListener("click", quitOnClick)
   echo "quit button: ", quitCandidate.name
 else:
@@ -137,7 +135,7 @@ while not done:
   gui.runTimedEvents()
 
   gui.drawDom(gui.rootElem)
-  gui.renderer.present()
+  discard gui.renderer.present()
 
   let emtick = getMonoTime()
   var st = emtick.ticks - smtick.ticks

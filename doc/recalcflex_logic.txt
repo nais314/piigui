@@ -9,7 +9,7 @@ recalcFlex(this: DivRef, layer: Layer): tuple[w, h: int]  #! entry, one layer of
   if layer.elems.len == 0: return    #! nothing to lay out: stop early
 
   if this.parent == nil:             #! root: box tracks the window size
-    sdl.getSize(this.pgui.window, ww, wh)
+    getSize(this.pgui.window, ww, wh)
     this.w = ww; this.h = wh
     this.x1 = 0; this.y1 = 0; this.x2 = w - 1; this.y2 = h - 1
 

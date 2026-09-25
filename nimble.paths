@@ -1,3 +1,4 @@
 --noNimblePath
 --path:"/home/istvan/projects/piigui_v2/src"
---path:"/home/istvan/.nimble/pkgs2/sdl2-2.0.6-360d842a8065b55cea326727422ca0f5b052ffea"
+--path:"/home/istvan/.nimble/pkgs2/sdl3-1.1-b864af804ae15264ae9e0e2bd5734d4d71b6518c/"
+#--path:"/home/istvan/.nimble/pkgs2/sdl2-2.0.6-360d842a8065b55cea326727422ca0f5b052ffea"

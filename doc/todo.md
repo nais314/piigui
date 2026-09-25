@@ -18,6 +18,10 @@
     - if not exists pseudostyle create
     - return stylesheet
 
+- 9-scale:
+  discard SDL_SetTextureColorMod(tex, 255, 128, 128)   # multiplies RGB
+  discard SDL_SetTextureAlphaMod(tex, 200)
+
 ### complex gui elements
 
 - textMatrixArea: a rectangle, it has rows and columns of monospace characters, like a **terminal**, except the scrolling.

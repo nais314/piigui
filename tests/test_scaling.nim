@@ -1,9 +1,8 @@
 import
-  sdl2 as sdl,
-  sdl2/image as img,
-  sdl2/gfx,
-  sdl2/ttf,
-  std.monotimes, os, tables
+  sdl3 as sdl,
+  sdl3_ttf as ttf,
+  piigui/sdl3_aliases,
+  std/monotimes, os, tables
 
 import piigui
 import piigui/[types, style, simple, hidevents]
@@ -44,7 +43,7 @@ proc plusBtnClick(this:DivRef)=
     let newSize = max(2, (fontObj.ptsize.float * this.window.scale).int).cint
     let newFont = fontObj.loader(newSize)
     if newFont != nil:
-      if fontObj.fontPtr != nil: ttf.close(fontObj.fontPtr)
+      if fontObj.fontPtr != nil: ttf.closeFont(fontObj.fontPtr)
       fontObj.fontPtr = newFont
 
 plusBtn.addEventListener("click", plusBtnClick)
@@ -68,8 +67,8 @@ quitBtn.inlineStyle.setBackGroundColor(0xDDDDDDFF.HexColor)
 
 proc quitBtnonClick(this:DivRef)=
   var sdlevent: sdl.Event
-  sdlevent.kind = sdl.QuitEvent
-  discard sdl.pushEvent(sdlevent.addr)
+  sdlevent.`type` = sdl.EVENT_QUIT
+  discard sdl.pushEvent(sdlevent)
   echo "quitBtnonClick"
 quitBtn.addEventListener("click", quitBtnonClick)
 
@@ -89,7 +88,7 @@ while not done:
   pgui.runTimedEvents()
 
   pgui.drawDom(pgui.rootElem)
-  pgui.renderer.present()
+  discard pgui.renderer.present()
 
   # FPS capping
   let endTime = getMonoTime()

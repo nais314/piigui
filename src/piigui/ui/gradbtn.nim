@@ -1,8 +1,7 @@
 import
-  sdl2 as sdl,
-  sdl2/image as img,
-  sdl2/gfx,
-  sdl2/ttf
+  sdl3 as sdl,
+  sdl3_ttf as ttf,
+  piigui/sdl3_aliases
 import piigui
 import piigui/[types,style]
 import piigui/layout/flex
@@ -142,33 +141,21 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
       return
     # .............................
 
-    # canvasRect is the rect we can paint
-    # after
-    # sdl.setRenderTarget(this.window.renderer, this.textureCache) 
-    var canvasRect: sdl.Rect
-    canvasRect.x = 0 #!
-    canvasRect.y = 0 #!
-    canvasRect.w = this.w
-    canvasRect.h = this.h
-
-    # .............................
-
-    # The area of this button on the screen,
-    # shifted by the accumulated scroll offsets of its ancestors.
-    # Screen-space destination rectangle for rendering (adjusted for scroll).
-    var screenRect: sdl.Rect
-    screenRect.x = this.x1 - scrollXArg #!
-    screenRect.y = this.y1 - scrollYArg #!
-    screenRect.w = this.w
-    screenRect.h = this.h
+    # Screen-space destination rectangle for rendering (adjusted for scroll) in FRect.
+    var screenFRect = sdl.FRect(
+      x: (this.x1 - scrollXArg).cfloat,
+      y: (this.y1 - scrollYArg).cfloat,
+      w: this.w.cfloat,
+      h: this.h.cfloat
+    )
 
     # .............................
     #! we need to redraw, even if not changed
     if this.redrawFlag == 0 and this.textureCache != nil:
-        discard sdl.setClipRect(this.window.renderer, clipRect.addr)
-        discard this.window.renderer.copy(
+        discard sdl.setRenderClipRect(this.window.renderer, clipRect.addr)
+        discard this.window.renderer.renderTexture(
             this.textureCache,
-            nil, screenRect.addr)
+            nil, addr screenFRect)
 
 
     else:
@@ -179,16 +166,16 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
         sdl.destroyTexture(this.textureCache)
       this.textureCache = sdl.createTexture(
         this.window.renderer,
-        sdl.SDL_PIXELFORMAT_UNKNOWN,#PIXELFORMAT_RGBA8888,
-        sdl.SDL_TEXTUREACCESS_TARGET,
-        this.w,
-        this.h)
+        sdl.PIXELFORMAT_UNKNOWN,#PIXELFORMAT_RGBA8888,
+        sdl.TEXTUREACCESS_TARGET,
+        this.w.cint,
+        this.h.cint)
       discard this.textureCache.setTextureBlendMode(sdl.BLENDMODE_BLEND)
 
       # the elems. texture is the render target x=0 y=0!
       discard sdl.setRenderTarget(this.window.renderer, this.textureCache)
-      this.window.renderer.setDrawColor(transparentColor)
-      discard this.window.renderer.clear()
+      discard setRenderDrawColor(this.window.renderer, transparentColor)
+      discard this.window.renderer.renderClear()
       # =====================================
       # =====================================
       #[ 
@@ -198,65 +185,50 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
         88   8   8 88  8 88   8    88   88  8 88  8 
         88   8eee8 88ee8 88   8    88   88ee8 88  8 
       ]#
-            #fontColor = sdl.Color((r:0'u8,g:0'u8,b:0'u8,a:255'u8))
-            #fontBgColor = sdl.Color((r:0'u8,g:0'u8,b:0'u8,a:0'u8))
 
 
-      # draw the elem:::::::
-      var
-        paintRect: sdl.Rect
-        #fontColor = sdl.Color((r:0'u8,g:0'u8,b:0'u8,a:255'u8))
-        #fontBgColor = sdl.Color((r:0'u8,g:0'u8,b:0'u8,a:0'u8))
+      #*------------------------------------------
+      #* gradient magic - source of idea unknown
+      #*------------------------------------------
+      
+      var paintFRect = sdl.FRect(
+        x: 0.0,
+        y: 0.0,
+        w: this.w.cfloat,
+        h: this.h.cfloat
+      )
 
       if this.state == 0:
-
-        #[ # shadow::::::::
-        paintRect.x = canvasRect.x + this.shadowSizePx
-        paintRect.y = canvasRect.y + this.shadowSizePx
-        paintRect.w = canvasRect.w - this.shadowSizePx
-        paintRect.h = canvasRect.h - this.shadowSizePx
-        when debug > 0:
-          echo "paintRect.x ", paintRect.x
-          echo "paintRect.y ", paintRect.y
-          echo "paintRect.w ", paintRect.w
-          echo "paintRect.h ", paintRect.h
-          
-        this.window.renderer.setDrawColor( sdl.Color((r:0'u8,g:0'u8,b:0'u8,a:100'u8)) )
-        discard this.window.renderer.fillRect(addr(canvasRect))
-  ]#
-        # btn face:::::
-        paintRect.x = canvasRect.x # 0
-        paintRect.y = canvasRect.y # 0
-        paintRect.w = canvasRect.w # w
-        paintRect.h = canvasRect.h # h
-
-        ## https://stackoverflow.com/questions/20348616/how-to-create-a-color-gradientTexture-in-sdl
-        discard sdl.setHint(sdl.HINT_RENDER_SCALE_QUALITY,"1")
+        #discard sdl.setHint(HINT_RENDER_SCALE_QUALITY,"1")
 
         var gradientTexture = sdl.createTexture(
           this.window.renderer,
-          sdl.SDL_PIXELFORMAT_RGBA8888, #SDL_PIXELFORMAT_UNKNOWN
-          sdl.SDL_TEXTUREACCESS_STREAMING,
+          sdl.PIXELFORMAT_RGBA8888,
+          sdl.TEXTUREACCESS_STREAMING, #This creates a 4×4 texture. STREAMING means the CPU can write pixels into it directly.
           4,4)
-        discard sdl.setTextureBlendMode(gradientTexture, sdl.BLENDMODE_BLEND)
+        discard gradientTexture.setTextureBlendMode(sdl.BLENDMODE_BLEND)
+        
+        #This asks SDL to use linear filtering instead of nearest-neighbor when scaling textures.
+        discard gradientTexture.setTextureScaleMode(sdl.SCALEMODE_LINEAR)
       
         var
           gradientRGBA_top: uint32 = toRGBA(this.styleCache[this.activeStyle].color)
           gradientRGBA_bottom: uint32 = toRGBA(this.styleCache[this.activeStyle].backGroundColor)
-          
           textureBitmapPointer: pointer
           pixelPitch: cint
+          gradientTextureTileFRect = sdl.FRect(x:1.0, y:1.0, w:2.0, h:2.0) # 4x4 RGBA 0..3 1..2==middle
 
-          #gradientTextureRect : sdl.Rect = (x:0,y:0,w:4,h:4)
-          gradientTextureTileRect : sdl.Rect = (x:1,y:1,w:2,h:2)
-
-        #echo gradientRGBA_top, " -- ", gradientRGBA_bottom
-
-        if sdl.lockTexture(gradientTexture,
+        # This gives you a raw pointer to the texture's pixel memory
+        if not sdl.lockTexture(gradientTexture,
                             nil,
-                            textureBitmapPointer.unsafeAddr,
-                            pixelPitch.unsafeAddr) != SDLSuccess: quit(QuitFailure)
+                            textureBitmapPointer,
+                            pixelPitch): quit(QuitFailure)
 
+        # The pointer is cast to an array of 16 uint32 values (4×4 pixels, one integer per pixel):
+        #   Indices 0–7 get the top color and 8–15 get the bottom color.
+        #   The code assumes each row is exactly 4 pixels wide with no padding (pixelPitch == 16).
+        #   That is usually true for such a small texture, 
+        #   but strictly you should use pixelPitch to be safe.
         for i in 0..7:
           cast[ptr array[16, uint32]](textureBitmapPointer)[i] = gradientRGBA_top
         for i in 8..15:
@@ -264,64 +236,70 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
 
         sdl.unlockTexture(gradientTexture)
 
-        echo sdl.copy(
-          this.window.renderer,
+        
+        #[ This is where the gradient appears:
+           The source rectangle (1, 1, 2, 2) selects only the middle 2×2 pixels of the 4×4 texture,
+           which is one row of top color (row 1) and one row of bottom color (row 2).
+           The destination nil means "fill the entire render target".   ]#
+        discard this.window.renderer.renderTexture(
           gradientTexture,
-          gradientTextureTileRect.addr,#nil,
-          nil #canvasRect.addr
+          addr gradientTextureTileFRect,
+          nil
         )
 
 
+        sdl.destroyTexture(gradientTexture)
 
-        # text::::::::::::::::::::::::::
+
+        #*----------------------------------------
+        #* text drawing
+        #*----------------------------------------
+
         if this.text.len > 0:
-          var textBGColor = this.styleCache[this.activeStyle].backGroundColor
-          textBGColor.a = 1 #! patch
-
-          var surface = this.pgui.fonts[
-                                      this.styleCache[this.activeStyle].font
-                                    ].fontPtr.renderUtf8BlendedWrapped(
-                                        this.text.cstring,
-                                        #this.styleCache[this.activeStyle].color,
-                                        buttonTextColor(this.styleCache[this.activeStyle].backGroundColor),
-                                        paintRect.w.uint32
-                                        )
+          var surface = ttf.renderTextBlendedWrapped(
+                                      this.pgui.fonts[
+                                        this.styleCache[this.activeStyle].font
+                                      ].fontPtr,
+                                      this.text.cstring,
+                                      0,
+                                      buttonTextColor(this.styleCache[this.activeStyle].backGroundColor),
+                                      paintFRect.w.cint
+                                      )
 
           if surface == nil:
             #! font render failed: release target/clip before bailing, keep redrawFlag set
             discard sdl.setRenderTarget(this.window.renderer, nil)
-            discard sdl.setClipRect(this.window.renderer, nil)
+            discard sdl.setRenderClipRect(this.window.renderer, nil)
             return
 
           var texture = sdl.createTextureFromSurface(this.window.renderer, surface)
-          discard sdl.setTextureBlendMode(texture, sdl.BLENDMODE_BLEND)
+          discard texture.setTextureBlendMode(sdl.BLENDMODE_BLEND)
+
+          var textFRect = sdl.FRect(
+            x: 0.0,
+            y: 0.0,
+            w: surface.w.cfloat,
+            h: surface.h.cfloat
+          )
 
           # center text on the rendered surface, not the font line height
-          if paintRect.h > surface.h:
-            paintRect.y = (paintRect.h - surface.h) div 2
-            paintRect.h = surface.h
-          if paintRect.w > surface.w:
-            paintRect.x = (paintRect.w - surface.w) div 2
-            paintRect.w = surface.w
+          if paintFRect.h > surface.h.cfloat:
+            textFRect.y = (paintFRect.h - surface.h.cfloat) / 2.0
+          if paintFRect.w > surface.w.cfloat:
+            textFRect.x = (paintFRect.w - surface.w.cfloat) / 2.0
 
-          discard this.window.renderer.copy(texture,
-            nil, paintRect.addr)
+          discard this.window.renderer.renderTexture(texture,
+            nil, addr textFRect)
 
-          sdl.freeSurface(surface)
-          destroyTexture(texture)
+          sdl.destroySurface(surface)
+          sdl.destroyTexture(texture)
         # ...............................
 
 
       elif this.state == 1: #! pressed, toggled state -------
-        paintRect.x = canvasRect.x
-        paintRect.y = canvasRect.y
-        paintRect.w = canvasRect.w
-        paintRect.h = canvasRect.h
-          
-        # btn face:::::
-        this.window.renderer.setDrawColor(
+        discard setRenderDrawColor(this.window.renderer,
           darken(this.styleCache[this.activeStyle].backGroundColor) )
-        discard this.window.renderer.fillRect(addr(paintRect))
+        discard this.window.renderer.renderFillRect(addr(paintFRect))
 
 
       # =====================================
@@ -330,16 +308,16 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
       # release rendertarget
       discard sdl.setRenderTarget(this.window.renderer, nil)
       # clip only the screen-space copy
-      discard sdl.setClipRect(this.window.renderer, clipRect.addr)
+      discard sdl.setRenderClipRect(this.window.renderer, clipRect.addr)
       # copy texture to its place
-      discard this.window.renderer.copy(
+      discard this.window.renderer.renderTexture(
           this.textureCache,
-          nil, screenRect.addr)
+          nil, addr screenFRect)
       # =====================================        
 
     # ............................................
     # reset clipping
-    discard sdl.setClipRect(this.window.renderer, nil)
+    discard sdl.setRenderClipRect(this.window.renderer, nil)
 
     this.redrawFlag = 0
 

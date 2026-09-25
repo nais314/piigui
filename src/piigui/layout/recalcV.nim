@@ -1,9 +1,3 @@
-import
-  sdl2 as sdl,
-  sdl2/image as img,
-  sdl2/gfx,
-  sdl2/ttf
-
 import piigui/types
 
 
@@ -78,17 +72,17 @@ proc recalcV*(this: DivRef, layer:Layer):tuple[w,h:int]=
     for elem in layer.elems:
       if elem.h_unit in [muAuto,muStretch]: elem.h = autoH
   else:
-    let autoH = if this.style.padding > -1: (this.h - (this.style.padding * 2)) else: this.h
+    let autoH = availH
     for elem in layer.elems:
       if elem.h_unit in [muAuto,muStretch]: elem.h = autoH
 
 
   # coordinates
-  var nextY = this.y1
+  var nextY = thisY1
   totalH = 0
   if this.style.spacing > 0:
     for elem in layer.elems:
-      elem.x1 = this.x1
+      elem.x1 = thisX1
       elem.x2 = elem.x1 + elem.w - 1
       #nextX = elem.x2 + 1
       
@@ -100,7 +94,7 @@ proc recalcV*(this: DivRef, layer:Layer):tuple[w,h:int]=
       totalH += elem.h + this.style.spacing # trailing spacing patched below
   else:
     for elem in layer.elems:
-      elem.x1 = this.x1
+      elem.x1 = thisX1
       elem.x2 = elem.x1 + elem.w - 1
       #nextX = elem.x2 + 1
       

@@ -1,8 +1,7 @@
 import
-  sdl2 as sdl,
-  sdl2/image as img,
-  sdl2/gfx,
-  sdl2/ttf
+  sdl3 as sdl,
+  sdl3_ttf as ttf,
+  piigui/sdl3_aliases
 import piigui
 import piigui/[types,style]
 import piigui/layout/flex
@@ -147,26 +146,32 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
     canvasRect.x = 0
     canvasRect.y = 0
     canvasRect.w = this.w
-    canvasRect.h = this.h
+    # canvasFRect in local coords
+    var canvasFRect = sdl.FRect(
+      x: 0.0,
+      y: 0.0,
+      w: this.w.cfloat,
+      h: this.h.cfloat
+    )
 
     # .............................
 
-    # The area of this button on the screen,
+    # The area of this button on the screen in FRect,
     # shifted by the accumulated scroll offsets of its ancestors.
-    # Screen-space destination rectangle for rendering (adjusted for scroll).
-    var screenRect: sdl.Rect
-    screenRect.x = this.x1 - scrollXArg
-    screenRect.y = this.y1 - scrollYArg
-    screenRect.w = this.w
-    screenRect.h = this.h
+    var screenFRect = sdl.FRect(
+      x: (this.x1 - scrollXArg).cfloat,
+      y: (this.y1 - scrollYArg).cfloat,
+      w: this.w.cfloat,
+      h: this.h.cfloat
+    )
 
     # .............................
     #! we need to redraw, even if not changed
     if this.redrawFlag == 0 and this.textureCache != nil:
-        discard sdl.setClipRect(this.window.renderer, clipRect.addr)
-        discard this.window.renderer.copy(
+        discard sdl.setRenderClipRect(this.window.renderer, clipRect.addr)
+        discard this.window.renderer.renderTexture(
             this.textureCache,
-            nil, screenRect.addr)
+            nil, addr screenFRect)
 
 
     else:
@@ -177,16 +182,16 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
         sdl.destroyTexture(this.textureCache)
       this.textureCache = sdl.createTexture(
         this.window.renderer,
-        sdl.SDL_PIXELFORMAT_UNKNOWN,#PIXELFORMAT_RGBA8888,
-        sdl.SDL_TEXTUREACCESS_TARGET,
-        this.w,
-        this.h)
+        sdl.PIXELFORMAT_UNKNOWN,#PIXELFORMAT_RGBA8888,
+        sdl.TEXTUREACCESS_TARGET,
+        this.w.cint,
+        this.h.cint)
       discard this.textureCache.setTextureBlendMode(sdl.BLENDMODE_BLEND)
 
       # the elems. texture is the render target x=0 y=0!
       discard sdl.setRenderTarget(this.window.renderer, this.textureCache)
-      this.window.renderer.setDrawColor(transparentColor)
-      discard this.window.renderer.clear()
+      discard setRenderDrawColor(this.window.renderer, transparentColor)
+      discard this.window.renderer.renderClear()
       # =====================================
       # =====================================
       #[ 
@@ -204,50 +209,56 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
 
       if this.state == 0:
 
-        this.window.renderer.setDrawColor(
+        discard setRenderDrawColor(this.window.renderer,
           this.styleCache[this.activeStyle].backGroundColor )
 
-        discard this.window.renderer.fillRect(addr(canvasRect))
+        discard this.window.renderer.renderFillRect(addr(canvasFRect))
         
         # draw border
         if this.styleCache[this.activeStyle].borderColor != EmptyColor:
-          this.window.renderer.setDrawColor(
+          discard setRenderDrawColor(this.window.renderer,
             this.styleCache[this.activeStyle].borderColor)
-        discard this.window.renderer.drawRect(addr(canvasRect))
+          discard this.window.renderer.renderRect(addr(canvasFRect))
 
 
         # text::::::::::::::::::::::::::
         if this.text.len > 0:
-          var surface = this.pgui.fonts[
-                                      this.styleCache[this.activeStyle].font
-                                    ].fontPtr.renderUtf8BlendedWrapped(
-                                        this.text.cstring,
-                                        #this.styleCache[this.activeStyle].color,
-                                        buttonTextColor(this.styleCache[this.activeStyle].backGroundColor),
-                                        canvasRect.w.uint32
-                                        )
+          var surface = ttf.renderTextBlendedWrapped(
+                                      this.pgui.fonts[
+                                        this.styleCache[this.activeStyle].font
+                                      ].fontPtr,
+                                      this.text.cstring,
+                                      0,
+                                      buttonTextColor(this.styleCache[this.activeStyle].backGroundColor),
+                                      this.w.cint
+                                      )
 
           if surface == nil:
             #! font render failed: release target/clip before bailing, keep redrawFlag set
             discard sdl.setRenderTarget(this.window.renderer, nil)
-            discard sdl.setClipRect(this.window.renderer, nil)
+            discard sdl.setRenderClipRect(this.window.renderer, nil)
             return
 
           var texture = sdl.createTextureFromSurface(this.window.renderer, surface)
 
+          var textFRect = sdl.FRect(
+            x: 0.0,
+            y: 0.0,
+            w: surface.w.cfloat,
+            h: surface.h.cfloat
+          )
+
           # center text on the rendered surface, not the font line height
-          if canvasRect.h > surface.h:
-            canvasRect.y = (canvasRect.h - surface.h) div 2
-            canvasRect.h = surface.h
-          if canvasRect.w > surface.w:
-            canvasRect.x = (canvasRect.w - surface.w) div 2
-            canvasRect.w = surface.w
+          if canvasFRect.h > surface.h.cfloat:
+            textFRect.y = (canvasFRect.h - surface.h.cfloat) / 2.0
+          if canvasFRect.w > surface.w.cfloat:
+            textFRect.x = (canvasFRect.w - surface.w.cfloat) / 2.0
 
-          discard this.window.renderer.copy(texture,
-            nil, canvasRect.addr)
+          discard this.window.renderer.renderTexture(texture,
+            nil, addr textFRect)
 
-          sdl.freeSurface(surface)
-          destroyTexture(texture)
+          sdl.destroySurface(surface)
+          sdl.destroyTexture(texture)
 
         # ...............................
 
@@ -255,48 +266,54 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
       elif this.state == 1: # pressed, toggled state
           
         # btn face:::::
-        this.window.renderer.setDrawColor(
+        discard setRenderDrawColor(this.window.renderer,
           this.styleCache[this.activeStyle].color )
-        discard this.window.renderer.fillRect(addr(canvasRect))
+        discard this.window.renderer.renderFillRect(addr(canvasFRect))
         
         # draw border
         if this.styleCache[this.activeStyle].borderColor != EmptyColor:
-          this.window.renderer.setDrawColor(
+          discard setRenderDrawColor(this.window.renderer,
             this.styleCache[this.activeStyle].borderColor)
-        discard this.window.renderer.drawRect(addr(canvasRect))
+          discard this.window.renderer.renderRect(addr(canvasFRect))
 
         # text::::::::::::::::::::::::::
         if this.text.len > 0:
-          var surface = this.pgui.fonts[
-                                      this.styleCache[this.activeStyle].font
-                                    ].fontPtr.renderUtf8BlendedWrapped(
-                                        this.text.cstring,
-                                        #this.styleCache[this.activeStyle].color,
-                                        buttonTextColor(this.styleCache[this.activeStyle].backGroundColor),
-                                        canvasRect.w.uint32
-                                        )
+          var surface = ttf.renderTextBlendedWrapped(
+                                      this.pgui.fonts[
+                                        this.styleCache[this.activeStyle].font
+                                      ].fontPtr,
+                                      this.text.cstring,
+                                      0,
+                                      buttonTextColor(this.styleCache[this.activeStyle].color),
+                                      this.w.cint
+                                      )
 
           if surface == nil:
             #! font render failed: release target/clip before bailing, keep redrawFlag set
             discard sdl.setRenderTarget(this.window.renderer, nil)
-            discard sdl.setClipRect(this.window.renderer, nil)
+            discard sdl.setRenderClipRect(this.window.renderer, nil)
             return
 
           var texture = sdl.createTextureFromSurface(this.window.renderer, surface)
 
+          var textFRect = sdl.FRect(
+            x: 0.0,
+            y: 0.0,
+            w: surface.w.cfloat,
+            h: surface.h.cfloat
+          )
+
           # center text on the rendered surface, not the font line height
-          if canvasRect.h > surface.h:
-            canvasRect.y = (canvasRect.h - surface.h) div 2
-            canvasRect.h = surface.h
-          if canvasRect.w > surface.w:
-            canvasRect.x = (canvasRect.w - surface.w) div 2
-            canvasRect.w = surface.w
+          if canvasFRect.h > surface.h.cfloat:
+            textFRect.y = (canvasFRect.h - surface.h.cfloat) / 2.0
+          if canvasFRect.w > surface.w.cfloat:
+            textFRect.x = (canvasFRect.w - surface.w.cfloat) / 2.0
 
-          discard this.window.renderer.copy(texture,
-            nil, canvasRect.addr)
+          discard this.window.renderer.renderTexture(texture,
+            nil, addr textFRect)
 
-          sdl.freeSurface(surface)
-          destroyTexture(texture)
+          sdl.destroySurface(surface)
+          sdl.destroyTexture(texture)
 
         # ...............................
 
@@ -306,16 +323,16 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
       # release rendertarget
       discard sdl.setRenderTarget(this.window.renderer, nil)
       # clip only the screen-space copy
-      discard sdl.setClipRect(this.window.renderer, clipRect.addr)
+      discard sdl.setRenderClipRect(this.window.renderer, clipRect.addr)
       # copy texture to its place
-      discard this.window.renderer.copy(
+      discard this.window.renderer.renderTexture(
           this.textureCache,
-          nil, screenRect.addr)
+          nil, addr screenFRect)
       # =====================================        
 
     # ............................................
     # reset clipping
-    discard sdl.setClipRect(this.window.renderer, nil)
+    discard sdl.setRenderClipRect(this.window.renderer, nil)
 
     this.redrawFlag = 0
 
@@ -355,6 +372,10 @@ proc atbtn_onclick*(this:DivRef, e:sdl.Event){.nosinks.}=
 proc atbtn_onFocus*(this:DivRef){.nosinks.}=
   this.redrawFlag = 1
   this.setActiveStyle("focus")
+  if AToggleBtn(this).state == 0:
+    AToggleBtn(this).state = 1
+  else:
+    AToggleBtn(this).state = 0
   #[ ## this elem not receives focus
   ## focus comes at MouseUp, so let's restore style to normal
   this.pgui.hoverElem = nil

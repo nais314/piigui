@@ -1,8 +1,7 @@
 import
-  sdl2 as sdl,
-  sdl2/image as img,
-  sdl2/gfx,
-  sdl2/ttf
+  sdl3 as sdl,
+  sdl3_ttf as ttf,
+  piigui/sdl3_aliases
 import piigui
 import piigui/[types,style]
 import piigui/layout/flex
@@ -149,33 +148,21 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
       echo repr(clipRect) & "\n"
     # .............................
 
-    # canvasRect is the rect we can paint
-    # after
-    # sdl.setRenderTarget(this.window.renderer, this.textureCache) 
-    var canvasRect: sdl.Rect
-    canvasRect.x = 0.cint
-    canvasRect.y = 0.cint
-    canvasRect.w = this.w.cint
-    canvasRect.h = this.h.cint
-
-    # .............................
-
-    # The area of this button on the screen,
-    # shifted by the accumulated scroll offsets of its ancestors.
-    # Screen-space destination rectangle for rendering (adjusted for scroll).
-    var screenRect: sdl.Rect
-    screenRect.x = (this.x1 - scrollXArg).cint
-    screenRect.y = (this.y1 - scrollYArg).cint
-    screenRect.w = this.w.cint
-    screenRect.h = this.h.cint
+    # Screen-space destination rectangle for rendering (adjusted for scroll) in FRect.
+    var screenFRect = sdl.FRect(
+      x: (this.x1 - scrollXArg).cfloat,
+      y: (this.y1 - scrollYArg).cfloat,
+      w: this.w.cfloat,
+      h: this.h.cfloat
+    )
 
     # .............................
     #! we need to redraw, even if not changed
     if this.redrawFlag == 0 and this.textureCache != nil:
-        discard sdl.setClipRect(this.window.renderer, clipRect.addr)
-        discard this.window.renderer.copy(
+        discard sdl.setRenderClipRect(this.window.renderer, clipRect.addr)
+        discard this.window.renderer.renderTexture(
             this.textureCache,
-            nil, screenRect.addr)
+            nil, addr screenFRect)
 
 
     else:
@@ -186,16 +173,16 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
         sdl.destroyTexture(this.textureCache)
       this.textureCache = sdl.createTexture(
         this.window.renderer,
-        sdl.SDL_PIXELFORMAT_UNKNOWN,
-        sdl.SDL_TEXTUREACCESS_TARGET,
+        sdl.PIXELFORMAT_UNKNOWN,
+        sdl.TEXTUREACCESS_TARGET,
         this.w.cint,
         this.h.cint)
       discard this.textureCache.setTextureBlendMode(sdl.BLENDMODE_BLEND)
 
       # the elems. texture is the render target x=0 y=0!
       discard sdl.setRenderTarget(this.window.renderer, this.textureCache)
-      this.window.renderer.setDrawColor(transparentColor)
-      discard this.window.renderer.clear()
+      discard setRenderDrawColor(this.window.renderer, transparentColor)
+      discard this.window.renderer.renderClear()
       # =====================================
       # =====================================
       #[ 
@@ -211,119 +198,122 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
       if this.shadowSizePx == 0:
         this.shadowSizePx = min((min(this.w, this.h) div 5), 12)
 
-      # draw the elem:::::::
-      var
-        paintRect: sdl.Rect
-        #fontColor = sdl.Color((r:0'u8,g:0'u8,b:0'u8,a:255'u8))
-        #fontBgColor = sdl.Color((r:0'u8,g:0'u8,b:0'u8,a:0'u8))
+      # draw the elem with FRect:
+      var paintFRect: sdl.FRect
 
       if this.state == 0:
 
         # shadow::::::::
-        paintRect.x = canvasRect.x + this.shadowSizePx
-        paintRect.y = canvasRect.y + this.shadowSizePx
-        paintRect.w = canvasRect.w - this.shadowSizePx
-        paintRect.h = canvasRect.h - this.shadowSizePx
+        paintFRect.x = this.shadowSizePx.cfloat
+        paintFRect.y = this.shadowSizePx.cfloat
+        paintFRect.w = (this.w - this.shadowSizePx).cfloat
+        paintFRect.h = (this.h - this.shadowSizePx).cfloat
         when debug > 1:
-          echo "paintRect.x ", paintRect.x
-          echo "paintRect.y ", paintRect.y
-          echo "paintRect.w ", paintRect.w
-          echo "paintRect.h ", paintRect.h
+          echo "paintFRect.x ", paintFRect.x
+          echo "paintFRect.y ", paintFRect.y
+          echo "paintFRect.w ", paintFRect.w
+          echo "paintFRect.h ", paintFRect.h
           
-        this.window.renderer.setDrawColor( sdl.Color((r:0'u8,g:0'u8,b:0'u8,a:160'u8)) )
-        discard this.window.renderer.fillRect(addr(paintRect))
+        discard setRenderDrawColor(this.window.renderer, sdl.Color(r:0'u8,g:0'u8,b:0'u8,a:160'u8))
+        discard this.window.renderer.renderFillRect(addr(paintFRect))
 
         # btn face:::::
-        paintRect.x = canvasRect.x
-        paintRect.y = canvasRect.y
-        paintRect.w = canvasRect.w - this.shadowSizePx
-        paintRect.h = canvasRect.h - this.shadowSizePx
-        this.window.renderer.setDrawColor(
+        paintFRect.x = 0.0
+        paintFRect.y = 0.0
+        paintFRect.w = (this.w - this.shadowSizePx).cfloat
+        paintFRect.h = (this.h - this.shadowSizePx).cfloat
+        discard setRenderDrawColor(this.window.renderer,
           this.styleCache[this.activeStyle].backGroundColor )
 
-        discard this.window.renderer.fillRect(addr(paintRect))
+        discard this.window.renderer.renderFillRect(addr(paintFRect))
 
         # text::::::::::::::::::::::::::
         if this.text.len > 0:
-          var surface = this.pgui.fonts[
-                                    this.styleCache[this.activeStyle].font
-                                  ].fontPtr.renderUtf8BlendedWrapped(
-                                      this.text.cstring,
-                                      #this.styleCache[this.activeStyle].color,
-                                      buttonTextColor(this.styleCache[this.activeStyle].backGroundColor),
-                                      paintRect.w.uint32
-                                      )
+          var surface = ttf.renderTextBlendedWrapped(
+                                    this.pgui.fonts[this.styleCache[this.activeStyle].font].fontPtr,
+                                    this.text.cstring,
+                                    0,
+                                    buttonTextColor(this.styleCache[this.activeStyle].backGroundColor),
+                                    paintFRect.w.cint
+                                    )
 
           if surface == nil:
             #! font render failed: release target/clip before bailing, keep redrawFlag set
             discard sdl.setRenderTarget(this.window.renderer, nil)
-            discard sdl.setClipRect(this.window.renderer, nil)
+            discard sdl.setRenderClipRect(this.window.renderer, nil)
             return
 
           var texture = sdl.createTextureFromSurface(this.window.renderer, surface)
 
+          var textFRect = sdl.FRect(
+            x: paintFRect.x,
+            y: paintFRect.y,
+            w: surface.w.cfloat,
+            h: surface.h.cfloat
+          )
+
           # center text on the rendered surface, not the font line height
-          if paintRect.h > surface.h:
-            paintRect.y = (paintRect.h - surface.h) div 2
-            paintRect.h = surface.h
-          if paintRect.w > surface.w:
-            paintRect.x = (paintRect.w - surface.w) div 2
-            paintRect.w = surface.w
+          if paintFRect.h > surface.h.cfloat:
+            textFRect.y = (paintFRect.h - surface.h.cfloat) / 2.0
+          if paintFRect.w > surface.w.cfloat:
+            textFRect.x = (paintFRect.w - surface.w.cfloat) / 2.0
 
-          discard this.window.renderer.copy(texture,
-            nil, paintRect.addr)
+          discard this.window.renderer.renderTexture(texture,
+            nil, addr textFRect)
 
-          sdl.freeSurface(surface)
+          sdl.destroySurface(surface)
           sdl.destroyTexture(texture)
 
         # ::::::::::::::::::::::::::
 
 
       elif this.state == 1: # pressed, toggled state
-        paintRect.x = canvasRect.x + this.shadowSizePx
-        paintRect.y = canvasRect.y + this.shadowSizePx
-        paintRect.w = canvasRect.w - this.shadowSizePx
-        paintRect.h = canvasRect.h - this.shadowSizePx
+        # btn face shifted by shadow size:::::
+        paintFRect.x = this.shadowSizePx.cfloat
+        paintFRect.y = this.shadowSizePx.cfloat
+        paintFRect.w = (this.w - this.shadowSizePx).cfloat
+        paintFRect.h = (this.h - this.shadowSizePx).cfloat
           
-        # btn face:::::
-        this.window.renderer.setDrawColor(
+        discard setRenderDrawColor(this.window.renderer,
           this.styleCache[this.activeStyle].backGroundColor )
-        discard this.window.renderer.fillRect(addr(paintRect))
+        discard this.window.renderer.renderFillRect(addr(paintFRect))
 
 
         # text::::::::::::::::::::::::::
         if this.text.len > 0:
-          var surface = this.pgui.fonts[
-                                    this.styleCache[this.activeStyle].font
-                                  ].fontPtr.renderUtf8BlendedWrapped(
-                                      this.text.cstring,
-                                      #this.styleCache[this.activeStyle].color,
-                                      buttonTextColor(this.styleCache[this.activeStyle].backGroundColor),
-                                      paintRect.w.uint32
-                                      )
+          var surface = ttf.renderTextBlendedWrapped(
+                                    this.pgui.fonts[this.styleCache[this.activeStyle].font].fontPtr,
+                                    this.text.cstring,
+                                    0,
+                                    buttonTextColor(this.styleCache[this.activeStyle].backGroundColor),
+                                    paintFRect.w.cint
+                                    )
 
           if surface == nil:
             #! font render failed: release target/clip before bailing, keep redrawFlag set
             discard sdl.setRenderTarget(this.window.renderer, nil)
-            discard sdl.setClipRect(this.window.renderer, nil)
+            discard sdl.setRenderClipRect(this.window.renderer, nil)
             return
 
           var texture = sdl.createTextureFromSurface(this.window.renderer, surface)
-          #texture.setAlphaMod(128'u8)
+
+          var textFRect = sdl.FRect(
+            x: paintFRect.x,
+            y: paintFRect.y,
+            w: surface.w.cfloat,
+            h: surface.h.cfloat
+          )
 
           # center text on the rendered surface, not the font line height
-          if paintRect.h > surface.h:
-            paintRect.y = ((paintRect.h - surface.h) div 2) + this.shadowSizePx
-            paintRect.h = surface.h
-          if paintRect.w > surface.w:
-            paintRect.x = ((paintRect.w - surface.w ) div 2) + this.shadowSizePx
-            paintRect.w = surface.w
+          if paintFRect.h > surface.h.cfloat:
+            textFRect.y = paintFRect.y + (paintFRect.h - surface.h.cfloat) / 2.0
+          if paintFRect.w > surface.w.cfloat:
+            textFRect.x = paintFRect.x + (paintFRect.w - surface.w.cfloat) / 2.0
 
+          discard this.window.renderer.renderTexture(texture,
+            nil, addr textFRect)
 
-          discard this.window.renderer.copy(texture,
-            nil, paintRect.addr)
-
-          sdl.freeSurface(surface)
+          sdl.destroySurface(surface)
           sdl.destroyTexture(texture)
 
         # ::::::::::::::::::::::::::
@@ -337,16 +327,16 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
       # release rendertarget
       discard sdl.setRenderTarget(this.window.renderer, nil)
       # clip only the screen-space copy
-      discard sdl.setClipRect(this.window.renderer, clipRect.addr)
+      discard sdl.setRenderClipRect(this.window.renderer, clipRect.addr)
       # copy texture to its place
-      discard this.window.renderer.copy(
+      discard this.window.renderer.renderTexture(
           this.textureCache,
-          nil, screenRect.addr)
+          nil, addr screenFRect)
       # =====================================        
 
     # ............................................
     # reset clipping
-    discard sdl.setClipRect(this.window.renderer, nil)
+    discard sdl.setRenderClipRect(this.window.renderer, nil)
 
     this.redrawFlag = 0
 

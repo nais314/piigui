@@ -1,8 +1,7 @@
 import
-  sdl2 as sdl,
-  sdl2/image as img,
-  sdl2/gfx,
-  sdl2/ttf
+  sdl3 as sdl,
+  sdl3_ttf as ttf,
+  piigui/sdl3_aliases
 
 import piigui
 import piigui/[types,style, simple, hidevents]
@@ -89,8 +88,8 @@ let quitBtn = rightFooter.newDosBtn(group="footBtn", width="25%", text="quit",sh
 
 proc quitBtnonClick(this:DivRef)=
   var sdlevent: sdl.Event
-  sdlevent.kind = sdl.QuitEvent
-  discard sdl.pushEvent(sdlevent.addr)
+  sdlevent.`type` = sdl.EVENT_QUIT
+  discard sdl.pushEvent(sdlevent)
   echo "quitBtnonClick"
 quitBtn.addEventListener("click", quitBtnonClick)
 #.....................
@@ -142,7 +141,8 @@ let gradbtn1 = tabContent1.newGradBtn(
   text = "gradbtn-1")
 
 gradbtn1.setColor(0x99ccffff.uint32)
-gradbtn1.setBackGroundColor(0x0080ffff.uint32)
+gradbtn1.setBackGroundColor(0xFF0088FF.uint32)
+#gradbtn1.setBackGroundColor(0x0080ffff.uint32)
 rootSSRT["gradbtn1"]= newStyleSheet()
 rootSSRT["gradbtn1"].addNewPseudoStyle("hover")
 rootSSRT["gradbtn1"].pseudoStyles["hover"].backGroundColor = (r:230, g:230, b:0, a:255)
@@ -182,7 +182,7 @@ proc blink(this: DivRef) =
     this.setActiveStyle("default")
     #echo "this.setActiveStyle(Label1)" & this.activeStyle
 
-gui.addTimedEvent(label1, 500, blink)
+gui.addTimedEvent(label1, 500_000_000, blink)
 
 #................
 
@@ -217,7 +217,11 @@ piigui.copyElem(tabContent1, content, 0)
 #----------------------------------------
 
 gui.rootElem.recalcStyle(true)
+
+tab1Btn.onFocus(tab1Btn)
+
 gui.rootElem.recalcDOM()
+
 
 echo " ++++++ RECALCED +++++++"
 echo leftFooter.w
@@ -238,7 +242,7 @@ while not done:
   gui.runTimedEvents()
 
   gui.drawDom(gui.rootElem)
-  gui.renderer.present()
+  discard gui.renderer.present()
 
   let emtick = getMonoTime()
   var st = emtick.ticks - smtick.ticks

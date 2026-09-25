@@ -12,6 +12,5 @@ srcDir        = "src"
 
 requires "nim >= 2.2.10"
 
-requires "sdl2 >= 2.0.6"
 requires "https://github.com/nim-lang/sdl3"
 

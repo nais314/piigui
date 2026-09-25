@@ -1,7 +1,7 @@
 import
-  sdl2 as sdl,
-  sdl2/image as img,
-  sdl2/ttf
+  sdl3 as sdl,
+  sdl3_ttf as ttf,
+  piigui/sdl3_aliases
 
 import piigui/[types, style]
 import tables
@@ -100,7 +100,7 @@ proc setParentClip(this: DivRef, scrollX, scrollY: int) =
     clipRect.y = this.y1.cint
     clipRect.w = this.w.cint
     clipRect.h = this.h.cint
-  discard sdl.setClipRect(this.window.renderer, clipRect.addr)
+  discard sdl.setRenderClipRect(this.window.renderer, clipRect.addr)
 
 #-------------------------------------------------------
 # part construction
@@ -135,26 +135,28 @@ proc newScrollBarPart(parent: DivRef, name, typeName, styleName: string): DivRef
 proc scrollTrack_draw(this: DivRef, scrollX, scrollY: int) =
   setParentClip(this, scrollX, scrollY)
   let st = this.styleCache[this.activeStyle]
-  this.window.renderer.setDrawColor(st.backGroundColor)
-  var r: sdl.Rect
-  r.x = (this.x1 - scrollX).cint
-  r.y = (this.y1 - scrollY).cint
-  r.w = this.w.cint
-  r.h = this.h.cint
-  discard this.window.renderer.fillRect(r.addr)
-  discard sdl.setClipRect(this.window.renderer, nil)
+  discard setRenderDrawColor(this.window.renderer, st.backGroundColor)
+  var r = sdl.FRect(
+    x: (this.x1 - scrollX).cfloat,
+    y: (this.y1 - scrollY).cfloat,
+    w: this.w.cfloat,
+    h: this.h.cfloat
+  )
+  discard this.window.renderer.renderFillRect(addr r)
+  discard sdl.setRenderClipRect(this.window.renderer, nil)
 
 proc scrollSlider_draw(this: DivRef, scrollX, scrollY: int) =
   setParentClip(this, scrollX, scrollY)
   let st = this.styleCache[this.activeStyle]
-  this.window.renderer.setDrawColor(st.color)
-  var r: sdl.Rect
-  r.x = (this.x1 - scrollX).cint
-  r.y = (this.y1 - scrollY).cint
-  r.w = this.w.cint
-  r.h = this.h.cint
-  discard this.window.renderer.fillRect(r.addr)
-  discard sdl.setClipRect(this.window.renderer, nil)
+  discard setRenderDrawColor(this.window.renderer, st.color)
+  var r = sdl.FRect(
+    x: (this.x1 - scrollX).cfloat,
+    y: (this.y1 - scrollY).cfloat,
+    w: this.w.cfloat,
+    h: this.h.cfloat
+  )
+  discard this.window.renderer.renderFillRect(addr r)
+  discard sdl.setRenderClipRect(this.window.renderer, nil)
 
 proc scrollArrow_draw(this: DivRef, dir: ArrowDir, scrollX, scrollY: int) =
   ## face is drawn with StyleSheet.color, the glyph with
@@ -164,25 +166,27 @@ proc scrollArrow_draw(this: DivRef, dir: ArrowDir, scrollX, scrollY: int) =
   let st = this.styleCache[this.activeStyle]
 
   # face
-  this.window.renderer.setDrawColor(st.color)
-  var r: sdl.Rect
-  r.x = (this.x1 - scrollX).cint
-  r.y = (this.y1 - scrollY).cint
-  r.w = this.w.cint
-  r.h = this.h.cint
-  discard this.window.renderer.fillRect(r.addr)
+  discard setRenderDrawColor(this.window.renderer, st.color)
+  var r = sdl.FRect(
+    x: (this.x1 - scrollX).cfloat,
+    y: (this.y1 - scrollY).cfloat,
+    w: this.w.cfloat,
+    h: this.h.cfloat
+  )
+  discard this.window.renderer.renderFillRect(addr r)
 
   # glyph rect (centered)
   let g = max(2, min(this.w, this.h) div 3)
-  this.window.renderer.setDrawColor(st.backGroundColor)
-  var gr: sdl.Rect
-  gr.x = (this.x1 - scrollX + (this.w - g) div 2).cint
-  gr.y = (this.y1 - scrollY + (this.h - g) div 2).cint
-  gr.w = g.cint
-  gr.h = g.cint
-  discard this.window.renderer.fillRect(gr.addr)
+  discard setRenderDrawColor(this.window.renderer, st.backGroundColor)
+  var gr = sdl.FRect(
+    x: (this.x1 - scrollX + (this.w - g) div 2).cfloat,
+    y: (this.y1 - scrollY + (this.h - g) div 2).cfloat,
+    w: g.cfloat,
+    h: g.cfloat
+  )
+  discard this.window.renderer.renderFillRect(addr gr)
 
-  discard sdl.setClipRect(this.window.renderer, nil)
+  discard sdl.setRenderClipRect(this.window.renderer, nil)
 
 #-------------------------------------------------------
 # scrolling API

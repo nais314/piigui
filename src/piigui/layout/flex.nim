@@ -1,8 +1,6 @@
 import
-  sdl2 as sdl,
-  sdl2/image as img,
-  sdl2/gfx,
-  sdl2/ttf
+  sdl3 as sdl,
+  piigui/sdl3_aliases
 
 import piigui/types
 
@@ -113,7 +111,7 @@ proc recalcFlex*(this: Divref, layer: Layer): tuple[w,h:int] =
   # the root's box tracks the window size, so a resize updates the layout
   if this.parent == nil:
     var windowWidth, windowHeight: cint
-    sdl.getSize(this.pgui.window, windowWidth, windowHeight)
+    discard getSize(this.pgui.window, windowWidth, windowHeight)
     this.w = windowWidth
     this.h = windowHeight
     this.x1 = 0

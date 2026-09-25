@@ -1,10 +1,9 @@
 # TODO: flex.nim column distribution, flex.nim refractor
 
 import
-  sdl2 as sdl,
-  sdl2/image as img,
-  sdl2/gfx,
-  sdl2/ttf
+  sdl3 as sdl,
+  sdl3_ttf as ttf,
+  piigui/sdl3_aliases
 
 import tables
 import os
@@ -37,29 +36,16 @@ const debug = 0
 converter cintToInt*(x: cint): int = x.int
 converter intToCint*(x: int): cint = x.cint
 
-converter SDL_ReturnToBool*(x: SDL_Return): bool = 
-  if x == SDLSuccess:
-    result = true
-  else:
-    result = false
-converter BoolToSDL_Return*(x: bool): SDL_Return = 
-  if x: 
-    result = SDLSuccess
-  else:
-    result = SdlError
 ###########################################
 
 
 proc setDPIMultiplier*(window:PgWindow) =
-  let displayIndex = sdl.getDisplayIndex(window.window)
-  var ddpi, hdpi, vdpi: cfloat
-  if sdl.getDisplayDPI(displayIndex, addr ddpi, addr hdpi, addr vdpi) == true:
-    if ddpi == BaselineDPI:
-      window.scale = 1.0
-    else:
-      window.scale = (ddpi / BaselineDPI).float
+  let displayID = sdl.getDisplayForWindow(window.window)
+  let scale = sdl.getDisplayContentScale(displayID)
+  if scale > 0.0:
+    window.scale = scale.float
   else:
-    when debug > 0: debugEcho "Failed to get DPI, defaulting to 1.0: ", getError()
+    when debug > 0: debugEcho "Failed to get DPI scale, defaulting to 1.0: ", sdl.getError()
     window.scale = 1.0
 
 
@@ -102,7 +88,7 @@ proc getNextGlobalID*(): uint =
 template activeWindow*(pgui): PgWindow =
   pgui.windows[pgui.currentWindowId]
 
-template renderer*(pgui: Pgui): sdl.RendererPtr =
+template renderer*(pgui: Pgui): RendererPtr =
   pgui.windows[pgui.currentWindowId].renderer
   #pgui.activeWindow.renderer
 
@@ -188,10 +174,10 @@ proc default_onFocus*(this:DivRef){.nosinks.}=
 
     #setDefaultStyle(this) # remove :hover
     this.pgui.hoverElem = nil
-    setActiveStyle(this,"focus", true)
+    setActiveStyle(this,"focus", false)
     
     if this.pgui.focusElem != nil: # prev focused elem blur
-      this.pgui.focusElem.setDefaultStyle(true)
+      this.pgui.focusElem.setDefaultStyle(false)
       if this.pgui.focusElem.onBlur != nil:
         this.pgui.focusElem.onBlur(this.pgui.focusElem)
     
@@ -201,6 +187,11 @@ proc parent_onFocus*(this:DivRef){.nosinks.}=
   this.parent.onFocus(this.parent)
 #..........
 
+proc default_onBlur*(this:DivRef){.nosinks.}=
+  if this.window != nil:
+    discard sdl.stopTextInput(this.window.window)
+
+#..........
 
 proc default_onDragStart*(this:DivRef){.nosinks.}=
   ## useful, if you not need special proc
@@ -302,8 +293,8 @@ proc visibleClipRect*(this: DivRef, scrollX, scrollY: int): sdl.Rect =
   ## `scrollX/Y` is the accumulated scroll of `this`'s ancestors,
   ## as passed down by drawDOMImpl.
   if this.parent == nil:
-    return (x: this.x1.cint, y: this.y1.cint,
-            w: this.w.cint, h: this.h.cint)
+    return sdl.Rect((x: this.x1.cint, y: this.y1.cint,
+            w: this.w.cint, h: this.h.cint))
 
   # accX/Y = the parent's accumulated ancestor scroll
   # (the parent's own scroll shifts its children, not the parent itself)
@@ -383,32 +374,32 @@ proc drawDivRef*(this:DivRef, scrollX, scrollY:int)=
   var clipRect = visibleClipRect(this, scrollX, scrollY)
   #.............................
 
-  # backgroundRect is the rect we can paint
-  # after
-  # sdl.setRenderTarget(this.window.renderer, this.textureCache) 
-  var backgroundRect: sdl.Rect
-  backgroundRect.x = 0.cint
-  backgroundRect.y = 0.cint
-  backgroundRect.w = this.w.cint
-  backgroundRect.h = this.h.cint
+  # backgroundFRect is the subpixel float rect for accelerated painting
+  var backgroundFRect = sdl.FRect(
+    x: 0.0,
+    y: 0.0,
+    w: this.w.cfloat,
+    h: this.h.cfloat
+  )
 
   #.............................
 
-  # the area of this elem on the screen
+  # the area of this elem on the screen in FRect
   # shifted by the accumulated scroll offsets of its scrollable ancestors
-  var thisRect: sdl.Rect
-  thisRect.x = (this.x1 - scrollX).cint
-  thisRect.y = (this.y1 - scrollY).cint
-  thisRect.w = this.w.cint
-  thisRect.h = this.h.cint
+  var thisFRect = sdl.FRect(
+    x: (this.x1 - scrollX).cfloat,
+    y: (this.y1 - scrollY).cfloat,
+    w: this.w.cfloat,
+    h: this.h.cfloat
+  )
 
   #.............................
   # we need to redraw, even if not changed
   if this.redrawFlag == 0 and this.textureCache != nil:
-      discard sdl.setClipRect(this.window.renderer, clipRect.addr)
-      discard this.window.renderer.copy(
+      discard sdl.setRenderClipRect(this.window.renderer, clipRect.addr)
+      discard this.window.renderer.renderTexture(
           this.textureCache,
-          nil, thisRect.addr)
+          nil, addr thisFRect)
 
 
   else:
@@ -418,20 +409,20 @@ proc drawDivRef*(this:DivRef, scrollX, scrollY:int)=
       sdl.destroyTexture(this.textureCache)
     this.textureCache = sdl.createTexture(
       this.window.renderer,
-      sdl.SDL_PIXELFORMAT_UNKNOWN,#PIXELFORMAT_RGBA8888,
-      sdl.SDL_TEXTUREACCESS_TARGET,
+      sdl.PIXELFORMAT_UNKNOWN,
+      sdl.TEXTUREACCESS_TARGET,
       this.w.cint, this.h.cint)
       
     discard this.textureCache.setTextureBlendMode(sdl.BLENDMODE_BLEND)
 
     # the elems. texture is the render target x=0 y=0!
     discard sdl.setRenderTarget(this.window.renderer, this.textureCache)
-    this.window.renderer.setDrawColor(transparentColor)
+    discard setRenderDrawColor(this.window.renderer, transparentColor)
     #discard this.window.renderer.clear()
     #.............................
 
     if this.styleCache[this.activeStyle].backGroundColor != EmptyColor:
-      this.window.renderer.setDrawColor(
+      discard setRenderDrawColor(this.window.renderer,
         this.styleCache[this.activeStyle].backGroundColor)
     when debug > 0:
         if this.styleCache[this.activeStyle].backGroundColor == EmptyColor:
@@ -441,57 +432,59 @@ proc drawDivRef*(this:DivRef, scrollX, scrollY:int)=
             g: uint8 = (rand(127) + 128).uint8
             b: uint8 = (rand(127) + 128).uint8
             a: uint8 = 255
-          discard this.window.renderer.setDrawColor(r, g, b, a)
+          discard this.window.renderer.setRenderDrawColor(r, g, b, a)
 
 
     # draw the elem
-    discard this.window.renderer.fillRect(addr(backgroundRect))
+    discard this.window.renderer.renderFillRect(addr(backgroundFRect))
 
     #=====================================
 
     when debug > 0:
         # render text --- render text --- render text ---
         var
-          fontColor = sdl.Color((r:0'u8,g:0'u8,b:0'u8,a:128'u8))
-          fontBgColor = sdl.Color((r:0'u8,g:0'u8,b:0'u8,a:0'u8))
+          fontColor = sdl.Color(r:0'u8,g:0'u8,b:0'u8,a:128'u8)
+          fontBgColor = sdl.Color(r:0'u8,g:0'u8,b:0'u8,a:0'u8)
 
         discard this.window.renderer.getRenderDrawColor(
-                      fontBgColor.r.addr,
-                      fontBgColor.g.addr,
-                      fontBgColor.b.addr,
-                      fontBgColor.a.addr)
-        var surface = this.pgui.fonts["default"].fontPtr.renderUtf8Shaded(
-                      this.name,
+                      fontBgColor.r,
+                      fontBgColor.g,
+                      fontBgColor.b,
+                      fontBgColor.a)
+        var surface = ttf.renderTextShaded(
+                      this.pgui.fonts[0].fontPtr,
+                      this.name.cstring,
+                      0,
                       fontColor,
                       fontBgColor)
         
         if surface != nil:
-            var srect : sdl.Rect = (
-                                x: 0,
-                                y: 0,
-                                w: surface.w,
-                                h: surface.h)
+            var sFRect = sdl.FRect(
+                                x: 0.0,
+                                y: 0.0,
+                                w: surface.w.cfloat,
+                                h: surface.h.cfloat)
 
             var texture = sdl.createTextureFromSurface(this.window.renderer, surface)
 
-            discard this.window.renderer.copy(texture,
-                nil, srect.addr)
+            discard this.window.renderer.renderTexture(texture,
+                nil, addr sFRect)
 
-            sdl.freeSurface(surface)
-            destroyTexture(texture) #?
+            sdl.destroySurface(surface)
+            sdl.destroyTexture(texture) #?
 
 
     #=====================================
     discard sdl.setRenderTarget(this.window.renderer, nil)
     # clip only the screen-space copy
-    discard sdl.setClipRect(this.window.renderer, clipRect.addr)
-    discard this.window.renderer.copy(
+    discard sdl.setRenderClipRect(this.window.renderer, clipRect.addr)
+    discard this.window.renderer.renderTexture(
         this.textureCache,
-        nil, thisRect.addr)
+        nil, addr thisFRect)
 
 
   # reset clipping
-  discard sdl.setClipRect(this.window.renderer, nil)
+  discard sdl.setRenderClipRect(this.window.renderer, nil)
 
   this.redrawFlag = 0
 
@@ -562,6 +555,7 @@ proc newDiv*(parent: DivRef,
 
   result.onHover = piigui.default_onHover
   result.onFocus = piigui.default_onFocus
+  result.onBlur = piigui.default_onBlur #TODO: review, test
   result.onDragStart = piigui.default_onDragStart
   result.onDragEnd = piigui.default_onDragEnd
   result.onDragOver = piigui.default_onDragOver
@@ -625,6 +619,9 @@ proc row*(parent: DivRef,
           recalcFun = recalcH,
           styles
         )
+# Alias forwarding template
+template hBox*(args: varargs[untyped]): untyped =
+  row(args)
 
 
 proc column*(parent: DivRef,
@@ -644,7 +641,9 @@ proc column*(parent: DivRef,
           recalcFun = recalcV,
           styles
         )
-
+# Alias forwarding template
+template vBox*(args: varargs[untyped]): untyped =
+  column(args)
 
 #--------------------------------------------
 
@@ -690,9 +689,7 @@ proc flexColumn*(parent: DivRef,
           recalcFun = recalcFlex,
           stylesResult
         )
-# Alias forwarding template
-template vBox*(args: varargs[untyped]): untyped =
-  flexColumn(args)
+
 
 
 proc flexRow*(parent: DivRef,
@@ -713,9 +710,7 @@ proc flexRow*(parent: DivRef,
         recalcFun = recalcFlex,
         stylesResult
   )
-# Alias forwarding template
-template hBox*(args: varargs[untyped]): untyped =
-  flexRow(args)
+
 #--------------------------------------------
 
 
@@ -763,7 +758,7 @@ proc newRoot*(
   result.w_unit = muPx
   result.h_unit = muPx
   var cw,ch:cint
-  sdl.getSize(win.window, cw, ch)
+  discard win.window.getSize(cw, ch)
   #echo "win: ", cw,"x",ch
   result.w_value = cw
   result.h_value = ch
@@ -816,34 +811,26 @@ proc newRoot*(
 #====================================== 
 proc newWindow*(pgui:Pgui,
                 title: cstring,
-                x: cint = sdl.SDL_WINDOWPOS_UNDEFINED,
-                y: cint = sdl.SDL_WINDOWPOS_UNDEFINED,
+                x: cint = sdl.WINDOWPOS_UNDEFINED.cint,
+                y: cint = sdl.WINDOWPOS_UNDEFINED.cint,
                 w: cint = 640, h: cint = 480,
-                flags: uint32 = DefaultWindowFlags,
+                flags: sdl.WindowFlags = DefaultWindowFlags,
                 styleSheetTbl: StyleSheetRef_Tbl
                 ): PgWindow =
   ## creates a PgWindow for an Pgui
   ## creates rootElem for PgWindow
   ## 
   
-  let newWin = sdl.createWindow(
-        title, x,y, w,h, flags)
+  let newWin = sdl.createWindow(title, w, h, flags)
   if newWin == nil:
-    #[ sdl.logCritical(sdl.LogCategoryError,
-                  "Can't create window: %s",
-                  sdl.getError()) ]#
     return nil
+  if x != sdl.WINDOWPOS_UNDEFINED.cint or y != sdl.WINDOWPOS_UNDEFINED.cint:
+    discard sdl.setWindowPosition(newWin, x, y)
   #........................
   let newWinId = newWin.getID()
 
-  let renderer = sdl.createRenderer(
-        newWin,
-        -1,
-        sdl.RendererAccelerated or sdl.RendererPresentVsync or sdl.RendererTargetTexture)
+  let renderer = sdl.createRenderer(newWin, nil)
   if renderer == nil:
-    #[ sdl.logCritical(sdl.LogCategoryError,
-                    "Can't create renderer: %s",
-                    sdl.getError()) ]#
     return nil
   #........................
 
@@ -885,28 +872,28 @@ proc newWindow*(pgui:Pgui,
 #======================================
 #*  DRAW DOM
 #====================================== 
-proc drawDOMImpl(pgui:Pgui, r:DivRef, scrollX, scrollY:int)=
+proc drawDOMImpl(pgui:Pgui, this:DivRef, scrollX, scrollY:int)=
   ## draw the tree, carrying the accumulated scroll offsets of the
   ## scrollable ancestors down to every element.
-  if r.draw != nil: r.draw(r, scrollX, scrollY)
+  if this.draw != nil: this.draw(this, scrollX, scrollY)
 
-  # r's own children are shifted by r's scroll, if r is scrollable
-  let nX = scrollX + (if r.scrollable: r.scrollX else: 0)
-  let nY = scrollY + (if r.scrollable: r.scrollY else: 0)
-  for layer in r.layers:
+  # this's own children are shifted by this's scroll, if this is scrollable
+  let nX = scrollX + (if this.scrollable: this.scrollX else: 0)
+  let nY = scrollY + (if this.scrollable: this.scrollY else: 0)
+  for layer in this.layers:
     for elem in layer.elems:
       drawDOMImpl(pgui, elem, nX, nY)
 
   # the scrollbar overlay sits in the owner's frame (its own scroll NOT applied)
-  if r.scrollable and r.scrollbar != nil:
-    drawScrollBar(r.scrollbar, scrollX, scrollY)
+  if this.scrollable and this.scrollbar != nil:
+    drawScrollBar(this.scrollbar, scrollX, scrollY)
 
-proc drawDOM*(pgui:Pgui, r:DivRef)=
+proc drawDOM*(pgui:Pgui, this:DivRef)=
   ## draw a tree (or subtree) from its root.
   ## the first call seeds the offset with the element's own scrollable
   ## ancestors, so it can be called with any element, not just the root.
-  let off = scrollOffset(r)
-  drawDOMImpl(pgui, r, off.x, off.y)
+  let off = scrollOffset(this)
+  drawDOMImpl(pgui, this, off.x, off.y)
 
 proc drawWindows*(pgui:Pgui)=
   ## redraw and present only the windows flagged dirty.
@@ -918,7 +905,7 @@ proc drawWindows*(pgui:Pgui)=
     if not win.redrawFlag or win.rootElem == nil:
       continue
     pgui.drawDOM(win.rootElem)
-    win.renderer.present()
+    discard win.renderer.present()
     win.redrawFlag = false
 
 #..................................
@@ -926,7 +913,7 @@ proc drawWindows*(pgui:Pgui)=
 proc recalcDOM*(rootElem: DivRef)=
   #[ if rootElem.parent == nil:
     var cw,ch:cint
-    sdl.getSize(rootElem.window.window, cw, ch)
+    getSize(rootElem.window.window, cw, ch)
     rootElem.w_value = cw
     rootElem.h_value = ch
     rootElem.w = cw
@@ -1045,20 +1032,21 @@ proc getElementAtCoord*(root: DivRef, x,y:int): DivRef =
 #* FONT
 # ===================================================
 
-proc createUTF8_Shaded*(font: ttf.FontPtr,
+proc createUTF8_Shaded*(font: FontPtr,
                         str:string,
                         fontColor,
-                        fontBgColor: sdl.Color): sdl.SurfacePtr =
-  result = renderUtf8Shaded(
+                        fontBgColor: sdl.Color): SurfacePtr =
+  result = ttf.renderTextShaded(
               font,
-              str,
+              str.cstring,
+              0,
               fontColor,
               fontBgColor)
 
 proc closeAllFonts*(pgui: Pgui) =
   for _, font in pgui.fonts:
     if font.fontPtr != nil:
-      ttf.close(font.fontPtr)
+      ttf.closeFont(font.fontPtr)
   pgui.fonts.setLen(0)
 template destroyFonts*(pgui: Pgui) = closeAllFonts(pgui)
 
@@ -1163,19 +1151,19 @@ proc trigger*(elems:seq[DivRef], evtname:string ):bool=
 
 proc addTimedEvent*(pgui: Pgui,
                     elem: DivRef,
-                    intervalMs: int,
+                    intervalNs: int64,
                     fun: proc(this: DivRef),
                     repeat: bool = true) =
   ## Registers a main-thread callback for an element.
+  ## intervalNs is the interval in nanoseconds.
   if pgui == nil or elem == nil or fun == nil:
     return
-  if intervalMs <= 0:
+  if intervalNs <= 0:
     raise newException(ValueError, "Timed event interval must be positive")
 
-  let intervalNs = intervalMs.int64 * 1_000_000'i64
   pgui.guiTimedEvents.add(TimedEvent(
     elem: elem,
-    intervalMs: intervalMs,
+    intervalNs: intervalNs,
     nextFireNs: getMonoTime().ticks + intervalNs,
     repeat: repeat,
     fun: fun))
@@ -1229,7 +1217,7 @@ proc runTimedEvents*(pgui: Pgui) =
 
     if event.repeat:
       # Schedule from now so a slow frame does not cause callback bursts.
-      pgui.guiTimedEvents[i].nextFireNs = nowNs + event.intervalMs.int64 * 1_000_000'i64
+      pgui.guiTimedEvents[i].nextFireNs = nowNs + event.intervalNs
     else:
       pgui.guiTimedEvents.delete(i)
 

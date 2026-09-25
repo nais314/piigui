@@ -1,8 +1,6 @@
 import
-  sdl2 as sdl,
-  sdl2/image as img,
-  sdl2/gfx,
-  sdl2/ttf
+  sdl3 as sdl,
+  sdl3_ttf as ttf
 
 import piigui
 import piigui/[types, style, simple, hidevents]
@@ -46,7 +44,7 @@ proc blink(this: DivRef) =
 
 gui.rootElem.recalcStyle(true)
 gui.rootElem.recalcDOM()
-gui.addTimedEvent(blinkBtn, 500, blink)
+gui.addTimedEvent(blinkBtn, 500_000_000, blink)
 
 var done = false
 while not done:
@@ -56,7 +54,7 @@ while not done:
   gui.runTimedEvents()
 
   gui.drawDom(gui.rootElem)
-  gui.renderer.present()
+  discard gui.renderer.present()
 
   let emtick = getMonoTime()
   let st = (emtick.ticks - smtick.ticks) div 1_000_000

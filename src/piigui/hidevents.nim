@@ -10,10 +10,9 @@
 
  ]#
 import
-  sdl2 as sdl,
-  sdl2/image as img,
-  sdl2/gfx,
-  sdl2/ttf
+  sdl3 as sdl,
+  sdl3_ttf as ttf,
+  piigui/sdl3_aliases
 
 import piigui
 import piigui/[types,style]
@@ -33,25 +32,23 @@ proc hid_events*(pgui:Pgui): bool = # exit pgui on true
   result = false
   var e: sdl.Event
 
-  while sdl.pollEvent( e ) != false: #! ==== POLL EVENT
-
+  while sdl.pollEvent( e ): #! ==== POLL EVENT
 
     # Quit requested
-    if e.kind == sdl.QuitEvent:
+    if e.`type` == sdl.EVENT_QUIT:
       return true
 
     # Key pressed
-    elif e.kind == sdl.KeyDown: #! ----- KeyDown
-      #echo repr(e)
-      let eventObj = evKeyboard(e)
-      pgui.currentWindowId = eventObj.windowID # set activeWindow # todo setter events focus window
+    elif e.`type` == sdl.EVENT_KEY_DOWN: #! ----- KeyDown
+      let windowID = e.key.windowID
+      pgui.currentWindowId = windowID # set activeWindow # todo setter events focus window
       # keyboard events may change styles; repaint the focused window
       if pgui.focusElem != nil and pgui.focusElem.window != nil:
         markElemWindowDirty(pgui.focusElem)
       else:
-        markWindowDirty(pgui, eventObj.windowID)
+        markWindowDirty(pgui, windowID)
       # Exit on Escape key press
-      if eventObj.keysym.sym == sdl.K_Escape:
+      if e.key.key == sdl.SDLK_ESCAPE:
         if pgui.mouseSource != nil:
           # Escape cancels the drag: restore the begin state
           if pgui.mouseSource.onDragCancel != nil:
@@ -63,44 +60,36 @@ proc hid_events*(pgui:Pgui): bool = # exit pgui on true
         else:
           return true
       when debug >= 2:
-        echo eventObj.keysym.sym
-        echo eventObj.keysym.scancode.int
+        echo e.key.key
+        echo e.key.scancode.int
 
       if pgui.focusElem != nil:
-        if not pgui.focusElem.trigger($eventObj.keysym.scancode):
-          pgui.trigger($eventObj.keysym.scancode)
+        if not pgui.focusElem.trigger($e.key.scancode):
+          pgui.trigger($e.key.scancode)
       else:
-        pgui.trigger($eventObj.keysym.scancode)
+        pgui.trigger($e.key.scancode)
 
 
-    elif e.kind == sdl.MouseMotion: #! ----- MouseMotion
-      let eventObj = evMouseMotion(e)
-      when debug >= 1:
-        #echo "> X: ",eventObj.x, " Y: ", eventObj.y
-        echo eventObj.motion
+    elif e.`type` == sdl.EVENT_MOUSE_MOTION: #! ----- MouseMotion
+      let windowID = e.motion.windowID
+      let mx = e.motion.x.cint
+      let my = e.motion.y.cint
 
-      pgui.mouseX = eventObj.x
-      pgui.mouseY = eventObj.y
+      pgui.mouseX = mx
+      pgui.mouseY = my
       
       let eventTarget = getElementAtCoord(
-        pgui.windows[eventObj.windowID].rootElem,
-        eventObj.x,
-        eventObj.y)
+        pgui.windows[windowID].rootElem,
+        mx,
+        my)
 
       if eventTarget != nil:
         markElemWindowDirty(eventTarget)
-        # set window - holding eventtarget - active
-        #pgui.window = pgui.windows[eventObj.windowID].window
-        pgui.currentWindowId = eventObj.windowID
-        #pgui.renderer = pgui.windows[eventObj.windowID].renderer
+        pgui.currentWindowId = windowID
         
         # if there was onmousedown before
         # then its a drag/dragover operation:
         if pgui.mouseSource != nil:
-          # start the drag once (the begin state is saved at that point),
-          # then the drag SOURCE receives the motion so it can clamp
-          # itself to its parent, and the hovered TARGET also gets
-          # onDragOver as drop-target feedback.
           if not pgui.mouseSource.dragSaved and pgui.mouseSource.onDragStart != nil:
             pgui.mouseSource.onDragStart(pgui.mouseSource)
           if pgui.mouseSource.onDragOver != nil:
@@ -119,42 +108,32 @@ proc hid_events*(pgui:Pgui): bool = # exit pgui on true
             pgui.hoverElem = nil
 
 
-    elif e.kind == sdl.MOUSEBUTTONDOWN: #! ----- MOUSEBUTTONDOWN
-      let eventObj = evMouseButton(e)
+    elif e.`type` == sdl.EVENT_MOUSE_BUTTON_DOWN: #! ----- MOUSEBUTTONDOWN
+      let windowID = e.button.windowID
+      let mx = e.button.x.cint
+      let my = e.button.y.cint
 
-      pgui.currentWindowId = eventObj.windowID
+      pgui.currentWindowId = windowID
 
       let eventTarget = getElementAtCoord(
-            #pgui.windows[ cast[MouseMotionEventPtr](unsafeAddr(e)).windowID ].rootElem,
-            #pgui.windows[ evMouseButton(e).windowID ].rootElem,
-            pgui.windows[ eventObj.windowID ].rootElem,
-            eventObj.x, eventObj.y)
+            pgui.windows[ windowID ].rootElem,
+            mx, my)
       if eventTarget != nil:
         markElemWindowDirty(eventTarget)
-        # D&D:
         pgui.mouseSource = eventTarget
-        #[ if eventTarget.onDragStart != nil and # draggable true
-          pgui.mouseSource != eventTarget: #???
-            pgui.mouseSource = eventTarget ]#
-        #[ # Click:
-        if eventTarget.onClick != nil:
-          eventTarget.onClick(eventTarget, e)
-        eventTarget.trigger("click") ]#
         if eventTarget.onMouseButtonDown != nil:
           eventTarget.onMouseButtonDown(eventTarget)
-          ## please call Elems onFocus method
-          ## in eventTarget.onMouseButtonDown
-          ## if needed ((for flexibility))
-
 
     
-    elif e.kind == sdl.MOUSEBUTTONUP: #! ----- MOUSEBUTTONUP
-      let eventObj = evMouseButton(e)
-      pgui.currentWindowId = eventObj.windowID
+    elif e.`type` == sdl.EVENT_MOUSE_BUTTON_UP: #! ----- MOUSEBUTTONUP
+      let windowID = e.button.windowID
+      let mx = e.button.x.cint
+      let my = e.button.y.cint
+      pgui.currentWindowId = windowID
 
       let eventTarget = getElementAtCoord(
-            pgui.windows[eventObj.windowID].rootElem,
-            eventObj.x, eventObj.y)
+            pgui.windows[windowID].rootElem,
+            mx, my)
       
       if eventTarget != nil:
         markElemWindowDirty(eventTarget)
@@ -179,39 +158,32 @@ proc hid_events*(pgui:Pgui): bool = # exit pgui on true
             if eventTarget.onFocus != nil: #****
               eventTarget.onFocus(eventTarget)
 
-
           
       if pgui.mouseSource != nil:
         pgui.mouseSource.dragSaved = false
       pgui.mouseSource = nil
-      #pgui.mouseTarget = nil
 
 
-    elif e.kind == sdl.MOUSEWHEEL: #! ----- MOUSEWHEEL
-      let eventObj = evMouseWheel(e)
-      when debug > 0: echo eventObj.wheel
+    elif e.`type` == sdl.EVENT_MOUSE_WHEEL: #! ----- MOUSEWHEEL
+      let windowID = e.wheel.windowID
       # wheel scrolls the hovered element's window
       if pgui.hoverElem != nil:
         markElemWindowDirty(pgui.hoverElem)
       else:
-        markWindowDirty(pgui, eventObj.windowID)
+        markWindowDirty(pgui, windowID)
       
       if pgui.hoverElem != nil:
-        ## set window - holding eventtarget - active
-        #pgui.window = pgui.windows[eventObj.windowID].window
-        #pgui.renderer = pgui.windows[eventObj.windowID].renderer
-
         var handled = false
-        if eventObj.y > 0:
+        if e.wheel.y > 0.0:
           when debug > 0: echo "wheelup"
           handled = pgui.hoverElem.trigger("wheelup")
-        elif eventObj.y < 0:
+        elif e.wheel.y < 0.0:
           when debug > 0: echo "wheeldown"
           handled = pgui.hoverElem.trigger("wheeldown")
-        elif eventObj.x > 0:
+        elif e.wheel.x > 0.0:
           when debug > 0: echo "wheelright"
           handled = pgui.hoverElem.trigger("wheelright")
-        elif eventObj.x < 0:
+        elif e.wheel.x < 0.0:
           when debug > 0: echo "wheelleft"
           handled = pgui.hoverElem.trigger("wheelleft")
 
@@ -220,137 +192,36 @@ proc hid_events*(pgui:Pgui): bool = # exit pgui on true
           var cur = pgui.hoverElem
           while cur != nil:
             if cur.scrollable and cur.scrollbar != nil:
-              scrollWheel(cur, eventObj.x, eventObj.y)
+              scrollWheel(cur, e.wheel.x.cint, e.wheel.y.cint)
               break
             cur = cur.parent
 
 
-    elif e.kind == sdl.TEXTINPUT: #! ----- TEXTINPUT
-      let eventObj = evTextInput(e)
-      when debug > 0: echo eventObj.text
+    elif e.`type` == sdl.EVENT_TEXT_INPUT: #! ----- TEXTINPUT
+      let windowID = e.text.windowID
       markElemWindowDirty(pgui.focusElem)
-      #echo eventObj.text
-      #textbox1.`value&=` $eventObj.text
-      if pgui.focusElem != nil:
-        if sdl.isTextInputActive():
+      if pgui.focusElem != nil and pgui.focusElem.window != nil:
+        if sdl.textInputActive(pgui.focusElem.window.window):
           if pgui.focusElem.onTextInput != nil:
-            pgui.focusElem.onTextInput(pgui.focusElem, $eventObj.text)
+            pgui.focusElem.onTextInput(pgui.focusElem, $e.text.text)
     
 
-    elif e.kind == sdl.WINDOWEVENT: #! ----- WINDOWEVENT
-        let eventObj = evWindow(e)
-        case (eventObj.event):
-          of WINDOWEVENT_SHOWN:
-            when debug > 0:
-              echo "WINDOWEVENT_SHOWN ", eventObj.windowId
-            discard
+    elif e.`type` == sdl.EVENT_WINDOW_EXPOSED:
+      markWindowDirty(pgui, e.window.windowID)
 
-          of WINDOWEVENT_HIDDEN:
-            when debug > 0:
-              echo "WINDOWEVENT_HIDDEN ", eventObj.windowId
-            discard
+    elif e.`type` == sdl.EVENT_WINDOW_RESIZED or e.`type` == sdl.EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+      let windowID = e.window.windowID
+      markWindowDirty(pgui, windowID)
+      let cw = e.window.data1
+      let ch = e.window.data2
+      pgui.windows[windowID].rootElem.w_value = cw
+      pgui.windows[windowID].rootElem.h_value = ch
 
-          of WINDOWEVENT_EXPOSED:
-            when debug > 0:
-              echo "WINDOWEVENT_EXPOSED ", eventObj.windowId
-            # the window was uncovered; repaint it
-            markWindowDirty(pgui, eventObj.windowID)
-            discard
+    elif e.`type` == sdl.EVENT_WINDOW_MAXIMIZED or e.`type` == sdl.EVENT_WINDOW_RESTORED:
+      markWindowDirty(pgui, e.window.windowID)
 
-          of WINDOWEVENT_MOVED:
-            #TODO: recalc scale and recalc DOM
-            when debug > 0:
-              echo "WINDOWEVENT_MOVED ", eventObj.windowId, "\n",
-                eventObj.data1, "\n",
-                eventObj.data2, "\n"
-            
-            discard
-
-          of WINDOWEVENT_RESIZED:
-            when debug > 0:
-              echo "WINDOWEVENT_RESIZED ", eventObj.windowId, "\n",
-                eventObj.data1, "\n",
-                eventObj.data2, "\n"
-            markWindowDirty(pgui, eventObj.windowID)
-            #pgui.windows[eventObj.windowID].recalc()
-            var cw,ch:cint
-            sdl.getSize(
-              pgui.windows[eventObj.windowID].window,
-              cw,ch
-              )
-            
-            pgui.windows[eventObj.windowID].rootElem.w_value = cw
-            pgui.windows[eventObj.windowID].rootElem.h_value = ch
-            #........
-
-            # TODO TSS change
-
-
-          of WINDOWEVENT_SIZE_CHANGED:
-            when debug > 0:
-              echo "WINDOWEVENT_SIZE_CHANGED ", eventObj.windowId, "\n",
-                eventObj.data1, "\n",
-                eventObj.data2, "\n"
-            markWindowDirty(pgui, eventObj.windowID)
-            #pgui.windows[eventObj.windowID].recalc()
-            var cw,ch:cint
-            sdl.getSize(
-              pgui.windows[eventObj.windowID].window,
-              cw,ch
-              )
-            
-            pgui.windows[eventObj.windowID].rootElem.w_value = cw
-            pgui.windows[eventObj.windowID].rootElem.h_value = ch
-
-
-          of WINDOWEVENT_MINIMIZED:
-            when debug > 0:
-              echo "WINDOWEVENT_MINIMIZED ", eventObj.windowId
-            discard
-          of WINDOWEVENT_MAXIMIZED:
-            when debug > 0:
-              echo "WINDOWEVENT_MAXIMIZED ", eventObj.windowId
-            markWindowDirty(pgui, eventObj.windowID)
-            discard
-          of WINDOWEVENT_RESTORED:
-            when debug > 0:
-              echo "WINDOWEVENT_RESTORED ", eventObj.windowId
-            markWindowDirty(pgui, eventObj.windowID)
-            discard
-          of WINDOWEVENT_ENTER:
-            when debug > 0:
-              echo "WINDOWEVENT_ENTER ", eventObj.windowId
-            discard
-          of WINDOWEVENT_LEAVE:
-            when debug > 0:
-              echo "WINDOWINDOWEVENT_LEAVED ", eventObj.windowId
-            discard
-          of WINDOWEVENT_FOCUS_GAINED:
-            when debug > 0:
-              echo "WINDOWEVENT_FOCUS_GAINED ", eventObj.windowId
-            discard
-          of WINDOWEVENT_FOCUS_LOST:
-            when debug > 0:
-              echo "WINDOWEVENT_FOCUS_LOST ", eventObj.windowId
-            discard
-          of WINDOWEVENT_CLOSE:
-            when debug > 0:
-              echo "WINDOWEVENT_CLOSE ", eventObj.windowId
-            discard
-          #if VERSION_ATLEAST(2, 0, 5)
-          of WINDOWEVENT_TAKE_FOCUS:
-            when debug > 0:
-              echo "WINDOWEVENT_TAKE_FOCUS ", eventObj.windowId
-            discard
-          of WINDOWEVENT_HIT_TEST:
-            when debug > 0:
-              echo "WINDOWEVENT_HIT_TEST ", eventObj.windowId
-            discard
-          #endif
-          else:
-            when debug > 0:
-              echo "UNKNOWN WINDOW EVENT ", eventObj.windowId
-            discard
+    elif e.`type` == sdl.EVENT_WINDOW_MOVED:
+      discard
 
 #--------------------------------------------
 # dirty marking

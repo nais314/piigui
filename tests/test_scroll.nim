@@ -1,7 +1,6 @@
 import
-  sdl2 as sdl,
-  sdl2/image as img,
-  sdl2/ttf
+  sdl3 as sdl,
+  sdl3_ttf as ttf
 
 import piigui
 import piigui/[types, style, simple, hidevents]
@@ -104,8 +103,8 @@ let quit = quitBtn.newDosBtn(
   text = "quit", shadowSizePx = 3)
 proc quitBtnonClick(this: DivRef) =
   var sdlevent: sdl.Event
-  sdlevent.kind = sdl.QuitEvent
-  discard sdl.pushEvent(sdlevent.addr)
+  sdlevent.`type` = sdl.EVENT_QUIT
+  discard sdl.pushEvent(sdlevent)
 quit.addEventListener("click", quitBtnonClick)
 
 ###########################################
@@ -126,7 +125,7 @@ while not done:
   gui.runTimedEvents()
 
   gui.drawDom(gui.rootElem)
-  gui.renderer.present()
+  discard gui.renderer.present()
 
   let emtick = getMonoTime()
   var st = emtick.ticks - smtick.ticks

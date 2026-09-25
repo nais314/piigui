@@ -1,15 +1,16 @@
 import
-  sdl2 as sdl,
-  sdl2/image as img,
-  sdl2/gfx,
-  sdl2/ttf,
+  sdl3 as sdl,
+  sdl3_ttf as ttf,
+  piigui/sdl3_aliases
 
-  os,
-
+import
   piigui,
   piigui/[types,style],
   piigui/layout/flex,
   tables
+
+import
+  os
 
 
 const debug = 1
@@ -39,20 +40,20 @@ const
 
 # 16pt is a common baseline for UI text at 96 DPI / 1x scaling
 proc load_RegularMono_FontResrc*(ptsize: cint, str:string): FontPtr =
-  let rw = sdl.rwFromConstMem(RegularMono_FontResrc.cstring, RegularMono_FontResrc.len.cint)
-  result = ttf.openFontRW(rw, freesrc = 1, ptsize)
+  let io = sdl.ioFromConstMem(RegularMono_FontResrc.cstring, RegularMono_FontResrc.len.csize_t)
+  result = ttf.openFontIO(io, closeio = true, ptsize.cfloat)
 
 proc load_BoldMono_FontResrc*(ptsize: cint, str:string=""): FontPtr =
-  let rw = sdl.rwFromConstMem(BoldMono_FontResrc.cstring, BoldMono_FontResrc.len.cint)
-  result = ttf.openFontRW(rw, freesrc = 1, ptsize)
+  let io = sdl.ioFromConstMem(BoldMono_FontResrc.cstring, BoldMono_FontResrc.len.csize_t)
+  result = ttf.openFontIO(io, closeio = true, ptsize.cfloat)
 
 proc load_H2_FontResrc*(ptsize: cint, str:string=""): FontPtr =
-  let rw = sdl.rwFromConstMem(BoldMono_FontResrc.cstring, BoldMono_FontResrc.len.cint)
-  result = ttf.openFontRW(rw, freesrc = 1, ptsize)
+  let io = sdl.ioFromConstMem(BoldMono_FontResrc.cstring, BoldMono_FontResrc.len.csize_t)
+  result = ttf.openFontIO(io, closeio = true, ptsize.cfloat)
 
 proc load_H1_FontResrc*(ptsize: cint, str:string=""): FontPtr =
-  let rw = sdl.rwFromConstMem(RegularMono_FontResrc.cstring, RegularMono_FontResrc.len.cint)
-  result = ttf.openFontRW(rw, freesrc = 1, ptsize) 
+  let io = sdl.ioFromConstMem(RegularMono_FontResrc.cstring, RegularMono_FontResrc.len.csize_t)
+  result = ttf.openFontIO(io, closeio = true, ptsize.cfloat) 
 
 # ===================================================
 #* INITIALIZE SDL
@@ -60,23 +61,15 @@ proc load_H1_FontResrc*(ptsize: cint, str:string=""): FontPtr =
 
 proc simpleSDLInit*(pgui: Pgui): bool =
   # Init SDL
-  if sdl.init(sdl.INIT_EVERYTHING) == SdlError:
+  if not sdl.init(sdl.INIT_VIDEO):
     #TODO: LOG
     echo "Can't initialize SDL: ", sdl.getError()
-    return false
-
-  #[   # Init SDL_Image
-  if img.init(img.InitPng) == 0:
-    sdl.logCritical(sdl.LogCategoryError,
-                    "Can't initialize SDL_Image: %s",
-                    img.getError()) ]#
-  if img.init(img.IMG_INIT_PNG or img.IMG_INIT_JPG) == 0:
     return false
 
   # ---------------------------------------------------
   #* Init SDL_TTF
   # ---------------------------------------------------
-  if ttf.ttfInit() == SdlError: 
+  if not ttf.init(): 
     echo "Can't initialize TTF: ", sdl.getError()
     return false
 
@@ -87,13 +80,15 @@ proc simpleSDLInit*(pgui: Pgui): bool =
 
   when debug > 0:
     # TEST WIDTH
-    var surface = font.renderUtf8Shaded(
+    var surface = font.renderTextShaded(
                   "W",
-                  sdl.Color((r:0'u8,g:0'u8,b:0'u8,a:255'u8)),
-                  sdl.Color((r:0'u8,g:0'u8,b:0'u8,a:0'u8))
+                  0,
+                  sdl.Color(r:0'u8,g:0'u8,b:0'u8,a:255'u8),
+                  sdl.Color(r:0'u8,g:0'u8,b:0'u8,a:0'u8)
                   )
-    echo "font \"W\" width: ", surface.w, "px"
-    surface.freeSurface()
+    if surface != nil:
+      echo "font \"W\" width: ", surface.w, "px"
+      sdl.destroySurface(surface)
     #sdl.delay(1000) # debug
 
   #:
@@ -158,11 +153,10 @@ proc simpleSDLInit*(pgui: Pgui): bool =
 # Shutdown sequence
 proc exit*(pgui: Pgui) =
   pgui.destroyFonts()
-  pgui.renderer.destroyRenderer()
-  pgui.window.destroyWindow()
+  sdl.destroyRenderer(pgui.renderer)
+  sdl.destroyWindow(pgui.window)
   
-  ttf.ttfQuit()
-  img.quit()
+  ttf.quit()
   #sdl.logInfo(sdl.LogCategoryApplication, "SDL shutdown completed")
   sdl.quit()
 
@@ -186,10 +180,10 @@ proc exit*(pgui: Pgui) =
 proc newSimpleWindow*(
                 pgui:Pgui,
                 title: cstring,
-                x: cint = sdl.SDL_WINDOWPOS_UNDEFINED,
-                y: cint = sdl.SDL_WINDOWPOS_UNDEFINED,
+                x: cint = sdl.WINDOWPOS_UNDEFINED.cint,
+                y: cint = sdl.WINDOWPOS_UNDEFINED.cint,
                 w: cint = DefaultWindowW, h: cint = DefaultWindowH,
-                flags: cuint = DefaultWindowFlags,
+                flags: sdl.WindowFlags = DefaultWindowFlags,
                 styleSheetTbl: StyleSheetRef_Tbl,
                 recalcFun: proc(this:DivRef, layer:Layer):tuple[w,h:int] = recalcFlex
                 ): PgWindow =
@@ -198,31 +192,31 @@ proc newSimpleWindow*(
   ## 
   
 
-  let newWin = sdl.createWindow(
-        title, x,y, w,h, sdl.SDL_WINDOW_SHOWN)
-  if newWin == nil:
+  let newSdlWindow = sdl.createWindow(title, w, h, flags)
+  if newSdlWindow == nil:
     return nil
 
-  let newWinId = newWin.getID()
+  if x != sdl.WINDOWPOS_UNDEFINED.cint or y != sdl.WINDOWPOS_UNDEFINED.cint:
+    discard sdl.setWindowPosition(newSdlWindow, x, y)
+
+  let newSdlWindowId = newSdlWindow.getID()
 
   #........................
 
-  let renderer = sdl.createRenderer(
-        newWin,
-        -1,
-        sdl.RendererAccelerated or sdl.RendererPresentVsync or sdl.RendererTargetTexture)
+  let renderer = sdl.createRenderer(newSdlWindow, nil)
 
   if renderer == nil:
     return nil
 
-  discard sdl.setDrawBlendMode(renderer, sdl.BLENDMODE_BLEND)
-  
+  #discard sdl.setRenderDrawBlendMode(renderer, sdl.BLENDMODE_BLEND)
+  discard renderer.setRenderDrawBlendMode(sdl.BLENDMODE_BLEND)
+
   #........................
 
 
-  if renderer.clear() != SdlSuccess: return nil
+  if not renderer.clear(): return nil
 
-  renderer.present()
+  discard renderer.present()
 
   #.........................
   #.........................
@@ -230,24 +224,24 @@ proc newSimpleWindow*(
 
   result = PgWindow(
     pgui: pgui,
-    window: newWin,
+    window: newSdlWindow,
     renderer: renderer,
     rootElem: nil,
     styleSheet: styleSheetTbl
   )
 
-  pgui.windows[newWinId] = result
+  pgui.windows[newSdlWindowId] = result
 
-  pgui.windows[newWinId].rootElem = newRoot(
-                                      win = pgui.windows[newWinId],
+  pgui.windows[newSdlWindowId].rootElem = newRoot(
+                                      win = pgui.windows[newSdlWindowId],
                                       recalcFun = recalcFun,
-                                      name = "root_" & $newWinId
+                                      name = "root_" & $newSdlWindowId
                                       )
 
   #........................
-  pgui.currentWindowId = newWinId
+  pgui.currentWindowId = newSdlWindowId
 
-  pgui.window = newWin
+  pgui.window = newSdlWindow
   #pgui.renderer = renderer
 
 #.......................................
@@ -277,20 +271,22 @@ proc newSimpleGui*(
 
 
 
-    if newSimpleWindow(
+    let newWindow = newSimpleWindow(
         result,
         name,
-        sdl.SDL_WINDOWPOS_UNDEFINED,
-        sdl.SDL_WINDOWPOS_UNDEFINED,
+        sdl.WINDOWPOS_UNDEFINED.cint,
+        sdl.WINDOWPOS_UNDEFINED.cint,
         windowW,
         windowH,
         DefaultWindowFlags,
         rootSSRT,
         recalcFun
-        ) == nil: quit("cannot create window" & $getError(), QuitFailure)
+        ) 
+        
+    if newWindow == nil: quit("cannot create window" & $sdl.getError(), QuitFailure)
 
     
-    setDPIMultiplier(result.activeWindow)
+    setDPIMultiplier(newWindow)
     #[ let theNewWindow: PgWindow = result.activeWindow
     let displayIndex = getDisplayIndex(result.activeWindow.window)
     if getDisplayDPI(displayIndex, addr theNewWindow.ddpi, addr theNewWindow.hdpi, addr theNewWindow.vdpi) == SdlSuccess:
@@ -305,12 +301,11 @@ proc newSimpleGui*(
 
 proc closeGui*(pgui: Pgui) =
   pgui.guiTimedEvents.setLen(0)
-  pgui.renderer.destroyRenderer()
-  pgui.window.destroyWindow()
+  sdl.destroyRenderer(pgui.renderer)
+  sdl.destroyWindow(pgui.window)
   for i in 0..pgui.fonts.high:
-    ttf.close(pgui.fonts[i].fontPtr)
-  ttf.ttfQuit()
-  img.quit()
+    ttf.closeFont(pgui.fonts[i].fontPtr)
+  ttf.quit()
   #sdl.logInfo(sdl.LogCategoryApplication, "SDL shutdown completed")
   sdl.quit()
 

@@ -1,29 +1,38 @@
 import
-  sdl2 as sdl,
-  sdl2/image as img,
-  sdl2/gfx,
-  sdl2/ttf
+  sdl3 as sdl,
+  sdl3_ttf as ttf,
+  piigui/sdl3_aliases
 import piigui
 import piigui/[types,style]
 import piigui/layout/flex
 import piigui/layout/recalcH as recalcHMod
 import piigui/layout/recalcV as recalcVMod
+
 import tables
 import unicode
 import locks
+import std/monotimes
 
-#import random
+const
+  debug = 1
 
-type MonoTextBox* = ref object of DivRef
-  val*: string # text is val here
-  cursorPos*: int
-  selectionStart*: int # if == cursorPos: no selection
-  scrollOffset*: int # which part `val` is seen ?
+type
+  MonoTextBox* = ref object of DivRef
+    val*: string # text is val here
+    cursorPos*: int = 0
+    selectionStart*: int = 0 # if == cursorPos: no selection
+    scrollOffset*: int = 0 # which part `val` is seen ?
 
-  # monospace font handling
-  charWidth*: int
-  charHeight*: int
-  padding*: int  
+    # monospace font handling
+    charWidth*: int
+    #charHeight*: int
+    #padding*: int
+
+    textureCacheWithCursor*: TexturePtr
+    lastDrawTick: int64
+    drawCursor: bool = false
+
+  TextBox* = MonoTextBox  
 
 #----------------------------------------------------
 #[ 
@@ -37,23 +46,25 @@ type MonoTextBox* = ref object of DivRef
  ]#
 
 
-proc default_onFocus*(this:DivRef){.nosinks.} #!FWD
-proc default_onBlur*(this:DivRef){.nosinks.} #!FWD
-proc default_onTextInput*(this: DivRef, val:string){.nosinks.} #!FWD
+proc onFocus(this:DivRef){.nosinks.} #!FWD
+proc onBlur(this:DivRef){.nosinks.} #!FWD
+proc onTextInput(this: DivRef, val:string){.nosinks.} #!FWD
+proc onMouseButtonUp(this:DivRef) #!FWD
 
 proc draw*(self:DivRef, scrollXArg, scrollYArg:int) #!FWD
 
 
 
-proc newTextBox*(parent: DivRef,
-             layer:int = 0,
-             name: string,
-             group: string,
-             width: string="auto",
-             height: string="auto",
-             recalcFun: proc(this:DivRef, layer:Layer): tuple[w: int, h: int] = recalcFlex,
-             styles: openArray[string] = []
-             ): TextBox =
+proc newMonoTextBox*(parent: DivRef,
+              val: string="",
+              layer: int = 0,
+              name: string="",
+              group: string="",
+              width: string="auto",
+              height: string="auto",
+              recalcFun: proc(this:DivRef, layer:Layer): tuple[w: int, h: int] = recalcFlex,
+              styles: openArray[string] = []
+              ): TextBox =
   const debug = 0b0
 
   result = new TextBox
@@ -61,7 +72,8 @@ proc newTextBox*(parent: DivRef,
   result.typeName = "TextBox"
   result.iD = piigui.getNextGlobalID()
 
-  result.val = "" #TODO
+  result.val = val #TODO
+  result.cursorPos = result.val.len
 
   result.parent = parent
   if parent != nil:
@@ -93,14 +105,15 @@ proc newTextBox*(parent: DivRef,
 
   result.draw = draw
 
-  result.onFocus = textbox.default_onFocus
-  result.onBlur = textbox.default_onBlur
+  result.onFocus = onFocus
+  result.onBlur = onBlur
   result.onHover = piigui.default_onHover
   result.onDragStart = piigui.default_onDragStart
   result.onDragEnd = piigui.default_onDragEnd
   result.onDragOver = piigui.default_onDragOver
 
-  result.onTextInput = textbox.default_onTextInput
+  result.onTextInput = onTextInput
+  result.onMouseButtonUp = onMouseButtonUp
 
 
   if parent != nil : parent.layers[layer].elems.add(result)
@@ -135,27 +148,41 @@ proc value*(this: TextBox):string= this.val
 #----------------------------------------------------
 
 
-proc default_onFocus*(this:DivRef){.nosinks.}=
+proc onFocus(this:DivRef){.nosinks.}=
+  when debug > 0: echo "[ MonoText Focusing ]"
   piigui.default_onFocus(this)
-  sdl.startTextInput()
+  if this.window != nil:
+    discard sdl.startTextInput(this.window.window)
+  this.redrawFlag = 1
 
-proc default_onBlur*(this:DivRef){.nosinks.}=
-  sdl.stopTextInput()
+  MonoTextBox(this).drawCursor = true
+  MonoTextBox(this).lastDrawTick = getMonoTime().ticks
 
-proc default_onTextInput*(this: DivRef, val:string){.nosinks.}=
+proc onBlur(this:DivRef){.nosinks.}=
+  if this.window != nil:
+    discard sdl.stopTextInput(this.window.window)
+
+proc onMouseButtonUp(this:DivRef)=
+  onFocus(this)
+
+
+proc onTextInput(this: DivRef, val:string){.nosinks.}=
       #[ this.val &= val
       this.cursorPos += 1 # = val.runeLen.uint
       this.redrawFlag = 1 ]#
       let self = TextBox(this)
       if self.cursorPos == 0:
+        # add text Before
         self.val = val & self.val
-      elif self.cursorPos == self.val.runeLen:
+      elif self.cursorPos == self.val.len:
+        # add text After
         self.val &= val
       else:
+        # instert text UTF8 way
         self.val = self.val.runeSubStr(0, self.cursorPos ) &
                     val &
                     self.val.runeSubStr(self.cursorPos)
-      self.cursorPos += val.runeLen
+      self.cursorPos += val.len
       self.redrawFlag = 1
 
 
@@ -178,7 +205,7 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
   ## if update only
   ## if visible
   withLock self.lock:
-    let this = TextBox(self)
+    let this = MonoTextBox(self)
 
     const debug = 0b0
 
@@ -190,46 +217,68 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
       echo "___________"
 
     #.............................
+
     # clipRect (screen coordinates) hides overflow: the intersection of all
     # ancestors' on-screen rects. It must clip ONLY the final on-screen copy,
     # not the texture-local rendering below.
+    #* SCREEN CORDINATES
     var clipRect = visibleClipRect(this, scrollXArg, scrollYArg)
     if clipRect.w == 0 or clipRect.h == 0:
       #! off-screen: skip render; redrawFlag stays set so it repaints when visible again
       return
     #.............................
 
-    # canvasRect is the rect we can paint
-    # after
-    # sdl.setRenderTarget(this.window.renderer, this.textureCache) 
-    var canvasRect: sdl.Rect
-    canvasRect.x = 0.cint
-    canvasRect.y = 0.cint
-    canvasRect.w = this.w.cint
-    canvasRect.h = this.h.cint
-
-    #.............................
-
     # The area of this button on the screen,
     # shifted by the accumulated scroll offsets of its ancestors.
     # Screen-space destination rectangle for rendering (adjusted for scroll).
-    var screenRect: sdl.Rect
-    screenRect.x = (this.x1 - scrollXArg).cint
-    screenRect.y = (this.y1 - scrollYArg).cint
-    screenRect.w = this.w.cint
-    screenRect.h = this.h.cint
+    #* SCREEN CORDINATES
+    var screenFRect = sdl.FRect(
+      x: (this.x1 - scrollXArg).cfloat,
+      y: (this.y1 - scrollYArg).cfloat,
+      w: this.w.cfloat,
+      h: this.h.cfloat
+    )
+    # .............................
 
-    #.............................
+    # canvasRect is the rect we can paint
+    # after
+    # sdl.setRenderTarget(this.window.renderer, this.textureCache)
+    #* TEXTURE COORDINATES
+    var canvasFRect = sdl.FRect(
+      x: 0.0,
+      y: 0.0,
+      w: this.w.cfloat,
+      h: this.h.cfloat
+    )
+    # .............................
+
+
     # we need to redraw, even if not changed
-    if this.redrawFlag == 0 and this.textureCache != nil:
-        discard sdl.setClipRect(this.window.renderer, clipRect.addr)
-        discard this.window.renderer.copy(
-            this.textureCache,
-            nil, screenRect.addr)
+    if this.redrawFlag == 0 and this.textureCache != nil and this.textureCacheWithCursor != nil:
+        discard sdl.setRenderClipRect(this.window.renderer, clipRect.addr)
 
+        if this.pgui.focusElem == this:
+          # draw cursor
+          let elapsedTicks = getMonoTime().ticks - this.lastDrawTick
+          if elapsedTicks > 500_000_000.int64: # nanoseconds
+            this.drawCursor = not this.drawCursor
+            this.lastDrawTick = getMonoTime().ticks
 
+          if this.drawCursor:
+            discard this.window.renderer.renderTexture(
+              this.textureCacheWithCursor,
+              nil, addr screenFRect)  
+          else:
+            discard this.window.renderer.renderTexture(
+              this.textureCache,
+              nil, addr screenFRect)           
 
-
+        else:
+          # only texturecache plays here
+          discard this.window.renderer.renderTexture(
+              this.textureCache,
+              nil, addr screenFRect)
+      #=============================================
     else:
       # if need to redraw, check if cache setted up
       # todo setup cahce at recalc
@@ -237,111 +286,113 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
         sdl.destroyTexture(this.textureCache)
       this.textureCache = sdl.createTexture(
         this.window.renderer,
-        sdl.SDL_PIXELFORMAT_UNKNOWN,#PIXELFORMAT_RGBA8888,
-        sdl.SDL_TEXTUREACCESS_TARGET,
+        sdl.PIXELFORMAT_UNKNOWN,#PIXELFORMAT_RGBA8888,
+        sdl.TEXTUREACCESS_TARGET,
         this.w.cint,
         this.h.cint)
       discard this.textureCache.setTextureBlendMode(sdl.BLENDMODE_BLEND)
 
-      # the elems. texture is the render target x=0 y=0!
+      #* the elems. texture is the render target x=0 y=0!
       discard sdl.setRenderTarget(this.window.renderer, this.textureCache)
-      this.window.renderer.setDrawColor(transparentColor)
-      discard this.window.renderer.clear()
-      #.............................
+      discard setRenderDrawColor(this.window.renderer, transparentColor)
+      discard this.window.renderer.renderClear()
 
+      #*-----------------------------
+      #* DRAWING ON TEXTURECACHE
+      #*-----------------------------
 
-      # get font heigth
-      var fh = this.pgui.fonts[
-                  this.styleCache[this.activeStyle].font
-                  ].fontPtr.fontHeight() + 2
-
-      if canvasRect.h > fh:
-        canvasRect.y = (canvasRect.h - fh) div 2
-        canvasRect.h = fh
-
-      # draw the elem
+      #* draw the background --------------------------------------
       if this.styleCache[this.activeStyle].backGroundColor != EmptyColor:
-        this.window.renderer.setDrawColor(
+        discard setRenderDrawColor(this.window.renderer,
           this.styleCache[this.activeStyle].backGroundColor)
 
-      discard this.window.renderer.fillRect(addr(canvasRect))
+      discard this.window.renderer.renderFillRect(addr(canvasFRect))
 
-      # draw border
+      #* draw border --------------------------------------
       if this.styleCache[this.activeStyle].borderColor != EmptyColor:
-        this.window.renderer.setDrawColor(
+        discard setRenderDrawColor(this.window.renderer,
           this.styleCache[this.activeStyle].borderColor)
-      discard this.window.renderer.drawRect(addr(canvasRect))
+      discard this.window.renderer.renderRect(addr(canvasFRect))
+      
+      #* draw the text --------------------------------------
+      if this.val.len > 0:
+        let
+          fontColor = this.styleCache[this.activeStyle].color
+          fontBgColor = this.styleCache[this.activeStyle].backGroundColor
+
+        let surface = ttf.renderTextBlended(
+                                    this.pgui.fonts[this.styleCache[this.activeStyle].font].fontPtr,
+                                    this.val.cstring,
+                                    0,
+                                    fontColor
+                                    )
+
+        if surface == nil:
+          #* font render failed: release target/clip before bailing, keep redrawFlag set
+          discard sdl.setRenderTarget(this.window.renderer, nil)
+          discard sdl.setRenderClipRect(this.window.renderer, nil)
+          return
+
+        #* set important type fields for cursor drawing
+        this.charWidth = surface.w div this.val.len
+
+        let texture = sdl.createTextureFromSurface(this.window.renderer, surface)
+
+        var textFRect = sdl.FRect(
+          x: 0.0,
+          y: 0.0,
+          w: surface.w.cfloat,
+          h: surface.h.cfloat
+        )
+
+        #* center text --------------------------
+        if canvasFRect.h > surface.h.cfloat:
+          textFRect.y = (canvasFRect.h - surface.h.cfloat) / 2.0
+        #[if canvasFRect.w > surface.w.cfloat:
+          textFRect.x = (canvasFRect.w - surface.w.cfloat) / 2.0 ]#
+
+        discard this.window.renderer.renderTexture(texture,
+            nil, addr textFRect)
+
+        sdl.destroySurface(surface)
+        sdl.destroyTexture(texture)
+        #................................
+
+
+        # DRAW CURSOR ................................
+        # duplicate texturecache
+        this.textureCacheWithCursor = duplicateTexture(
+          this.window.renderer,
+          this.textureCache,
+          this.w.cfloat, this.h.cfloat)
+
+        discard sdl.setRenderTarget(this.window.renderer, this.textureCacheWithCursor)
+
+        if this.pgui.focusElem == this:
+          when debug > 0: echo "[ MonoText cursor drawing ]"
+          discard setRenderDrawColor(this.window.renderer,
+              this.styleCache[this.activeStyle].color)
+
+          discard this.window.renderer.renderLine(
+              (this.cursorPos * this.charWidth).cfloat,
+              canvasFRect.y,
+              (this.cursorPos * this.charWidth).cfloat,
+              canvasFRect.y + canvasFRect.h
+              )
 
 
       #=====================================
-      #[ discard this.window.renderer.setRenderDrawColor(
-          this.styleCache[this.activeStyle].backGroundColor) ]#
-      # render text --- render text --- render text ---
-      var
-        fontColor = sdl.Color((r:0'u8,g:0'u8,b:0'u8,a:255'u8))
-        fontBgColor = sdl.Color((r:0'u8,g:0'u8,b:0'u8,a:1'u8))
-
-      #var surface = this.pgui.font_normal.renderUTF8_Solid(this.name, fontColor)
-      #[ discard this.window.renderer.getRenderDrawColor(
-                    fontBgColor.r.addr,
-                    fontBgColor.g.addr,
-                    fontBgColor.b.addr,
-                    fontBgColor.a.addr) ]#
-      #[ echo this.activeStyle
-      echo this.styleCache[this.activeStyle].color.r.int
-      echo this.styleCache[this.activeStyle].color.g.int
-      echo this.styleCache[this.activeStyle].color.b.int
-      echo this.styleCache[this.activeStyle].color.a.int ]#
-
-      var surface = this.pgui.font_normal.renderUtf8Shaded(
-                    this.val,
-                    this.styleCache[this.activeStyle].color,
-                    fontBgColor)
-      #discard surface.setColorKey(1,0)
-
-      var srect : sdl.Rect = (
-                          x: canvasRect.x + 1,
-                          y: canvasRect.y + 1,
-                          w: surface.w,
-                          h: surface.h)
-
-      var texture = sdl.createTextureFromSurface(this.window.renderer, surface)
-
-      discard this.window.renderer.copy(texture,
-          nil, srect.addr)
-
-      sdl.freeSurface(surface)
-      destroyTexture(texture)
-
-      #................................
-
-      # DRAW CURSOR ................................
-      if this.pgui.focusElem == this:
-        this.window.renderer.setDrawColor(
-            this.styleCache[this.activeStyle].color)
-        
-        #this.cursorPos = rand(this.val.len).uint
-        #this.cursorPos = (this.val.runeLen)
-
-        discard this.window.renderer.drawLine(
-            cint(this.cursorPos * 8),
-            canvasRect.y.cint,
-            cint(this.cursorPos * 8),
-            canvasRect.y.cint + canvasRect.h.cint
-            )
-
-
-      #=====================================
+      #! Reset the target back to the window (nil)
       discard sdl.setRenderTarget(this.window.renderer, nil)
       # clip only the screen-space copy
-      discard sdl.setClipRect(this.window.renderer, clipRect.addr)
-      discard this.window.renderer.copy(
+      discard sdl.setRenderClipRect(this.window.renderer, clipRect.addr)
+      discard this.window.renderer.renderTexture(
           this.textureCache,
-          nil, screenRect.addr)
+          nil, addr screenFRect)
 
 
-    # reset clipping
-    discard sdl.setClipRect(this.window.renderer, nil)
+    #* reset clipping ----------------------
+    discard sdl.setRenderClipRect(this.window.renderer, nil)
 
     this.redrawFlag = 0
 

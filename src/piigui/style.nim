@@ -1,9 +1,8 @@
 
 import
-  sdl2 as sdl,
-  sdl2/image as img,
-  sdl2/gfx,
-  sdl2/ttf
+  sdl3 as sdl,
+  sdl3_ttf as ttf,
+  piigui/sdl3_aliases
 
 import piigui/types
 import piigui/layout/flex
@@ -49,7 +48,7 @@ import locks
 let opaqueWhiteColor* = newColor(r = 255'u8, g = 255'u8, b = 255'u8, a = 255'u8) ]#
 
 proc rgbaColor*(r:int, g:int, b:int, a:int): sdl.Color=
-  return sdl.Color((r.uint8, g.uint8, b.uint8, a.uint8))
+  return sdl.Color(r: r.uint8, g: g.uint8, b: b.uint8, a: a.uint8)
 
 #[ 
 # colors moved to types.nim
@@ -68,12 +67,12 @@ rootSSRT["rootStyle"] = StyleSheetRef(
   ## - which are mostly empty eg
   ## not overwriting undefined style properties -
   ## use proc newStyleSheet*(): StyleSheetRef
-  flexGrow: 0,
-  flexGrowFrom: 75,
+  flexGrow: -1,
+  flexGrowFrom: 0,
   flexDirection: fdColumn,
   #flexWrap: false,
   justifyContent: fjcCenter,
-  alignContent: facStart,
+  alignContent: facStart, #? why not facCenter ?
   alignItems: faiCenter,
   spacing: -1,
   color: blackColor, #sdl.Color((r:255'u8,g:255'u8,b:255'u8,a:255'u8)),
@@ -86,8 +85,8 @@ rootSSRT["rootStyle"] = StyleSheetRef(
 )
 
 rootSSRT["row"] = StyleSheetRef(
-  flexGrow: 1,
-  flexGrowFrom: 75,
+  flexGrow: -1,
+  flexGrowFrom: 0,
   flexDirection: fdRow,
   #flexWrap: true,
   justifyContent: fjcCenter,
@@ -100,8 +99,8 @@ rootSSRT["row"] = StyleSheetRef(
 )
 
 rootSSRT["column"] = StyleSheetRef(
-  flexGrow: 1,
-  flexGrowFrom: 66,
+  flexGrow: -1,
+  flexGrowFrom: 0,
   flexDirection: fdColumn,
   #flexWrap: true,
   justifyContent: fjcCenter,
@@ -163,7 +162,7 @@ proc addOrUpdate*(target: TableRef[string, StyleSheetRef],
 
 #...................................
 
-
+# hexcolor, human readable, online pickable
 proc setBackGroundColor*(this:StyleSheetRef,
                           col:HexColor)=
   this.backGroundColor.r = ((col shr 24) and 0xFF).uint8
@@ -185,6 +184,27 @@ proc setBorderColor*(this:StyleSheetRef,
   this.borderColor.b = ((col shr 8) and 0xFF).uint8
   this.borderColor.a = ( col and 0xFF).uint8
 
+# int to uint8 helpers
+proc setBackGroundColor*(this:StyleSheetRef,
+                         r,g,b,a:int)=
+  this.backGroundColor.r = r.uint8
+  this.backGroundColor.g = g.uint8
+  this.backGroundColor.b = b.uint8
+  this.backGroundColor.a = a.uint8
+
+proc setColor*(this:StyleSheetRef,
+               r,g,b,a:int)=
+  this.color.r = r.uint8
+  this.color.g = g.uint8
+  this.color.b = b.uint8
+  this.color.a = a.uint8
+
+proc setBorderColor*(this:StyleSheetRef,
+                         r,g,b,a:int)=
+  this.borderColor.r = r.uint8
+  this.borderColor.g = g.uint8
+  this.borderColor.b = b.uint8
+  this.borderColor.a = a.uint8
 #______________________________________
 
 
@@ -389,10 +409,11 @@ proc setActiveStyle*(this:DivRef, styleName:string,
       if this.styleCache[styleName] != nil:
         this.prevStyle = this.activeStyle
         this.activeStyle = styleName
+        this.redrawFlag = 1
+
         if recalcChildrenStyles:
           this.recalcStyle(recursive=true)
-        else:
-          this.redrawFlag = 1
+          
     #echo repr this.styleCache
 
 
@@ -423,6 +444,9 @@ proc setDefaultStyle*(this:DivRef,
 
 #######################################################
 
+proc setBackGroundColor*(this:DivRef, color:sdl.Color)=
+  this.inlineStyle.backGroundColor = color
+  this.recalcStyle()
 
 proc setBackGroundColor*(this:DivRef,
                       r:uint8=255,
@@ -448,6 +472,17 @@ proc setBackGroundColor*(this:DivRef,
   echo this.inlineStyle.backGroundColor.g.int
   echo this.inlineStyle.backGroundColor.b.int
   echo this.inlineStyle.backGroundColor.a.int ]#
+
+proc setBackGroundColor*(this:DivRef,
+                      r:int=255,
+                      g:int=255,
+                      b:int=255,
+                      a:int=255)=
+  this.inlineStyle.backGroundColor.r = r.uint8
+  this.inlineStyle.backGroundColor.g = g.uint8
+  this.inlineStyle.backGroundColor.b = b.uint8
+  this.inlineStyle.backGroundColor.a = a.uint8
+  this.recalcStyle()
 
 proc setBorderColor*(this:DivRef,
                       r:uint8=255,
