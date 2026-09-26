@@ -22,6 +22,7 @@ type
     cursorPos*: int = 0
     selectionStart*: int = 0 # if == cursorPos: no selection
     scrollOffset*: int = 0 # which part `val` is seen ?
+    undoVal*: string = "" # snapshot at text-input start; Ctrl+Z restores it
 
     # monospace font handling
     charWidth*: int
@@ -50,6 +51,8 @@ proc onFocus(this:DivRef){.nosinks.} #!FWD
 proc onBlur(this:DivRef){.nosinks.} #!FWD
 proc onTextInput(this: DivRef, val:string){.nosinks.} #!FWD
 proc onMouseButtonUp(this:DivRef) #!FWD
+proc onClick(this:DivRef, eventObj:sdl.Event) #!FWD
+proc keyDownEventListener(this:DivRef, e:sdl.Event):bool {.nosinks.} #!FWD
 
 proc draw*(self:DivRef, scrollXArg, scrollYArg:int) #!FWD
 
@@ -73,7 +76,7 @@ proc newMonoTextBox*(parent: DivRef,
   result.iD = piigui.getNextGlobalID()
 
   result.val = val #TODO
-  result.cursorPos = result.val.len
+  result.cursorPos = result.val.runeLen
 
   result.parent = parent
   if parent != nil:
@@ -114,6 +117,10 @@ proc newMonoTextBox*(parent: DivRef,
 
   result.onTextInput = onTextInput
   result.onMouseButtonUp = onMouseButtonUp
+  result.onClick = onClick
+
+  #* fine-grained keyboard handling: navigation, edit keys, Ctrl+Z undo
+  result.addEventListener("keydown", keyDownEventListener)
 
 
   if parent != nil : parent.layers[layer].elems.add(result)
@@ -160,9 +167,12 @@ proc cursorTimedEvent*(this: DivRef, nowNs: int64)=
 
 proc onFocus(this:DivRef){.nosinks.}=
   when debug > 0: echo "[ MonoText Focusing ]"
+
   piigui.default_onFocus(this)
   if this.window != nil:
     discard sdl.startTextInput(this.window.window)
+  #* snapshot for single-level Ctrl+Z undo at the moment input starts
+  MonoTextBox(this).undoVal = MonoTextBox(this).val
   this.redrawFlag = rkFullRedraw
 
   MonoTextBox(this).drawCursor = true
@@ -176,19 +186,28 @@ proc onFocus(this:DivRef){.nosinks.}=
     )
 
 proc onBlur(this:DivRef){.nosinks.}=
-  if this.window != nil:
-    discard sdl.stopTextInput(this.window.window)
+  piigui.default_onBlur(this)
+
   MonoTextBox(this).pgui.removeTimedEvent(this, cursorTimedEvent)
+  MonoTextBox(this).drawCursor = false
 
 proc onMouseButtonUp(this:DivRef)=
   onFocus(this)
 
+
+proc onClick(this:DivRef, eventObj:sdl.Event)=
+  when debug > 0: echo "[ MonoText onClick ]" & repr eventObj.motion
+
+  MonoTextBox(this).cursorPos = min( (eventObj.motion.x.int - this.x1) div MonoTextBox(this).charWidth, MonoTextBox(this).val.len)
+  this.redrawFlag = rkFullRedraw
 
 proc onTextInput(this: DivRef, val:string){.nosinks.}=
       #[ this.val &= val
       this.cursorPos += 1 # = val.runeLen.uint
       this.redrawFlag = rkFullRedraw ]#
       let self = TextBox(this)
+      #TODO: if selection: clear
+      #TODO: cursor to selection start
       if self.cursorPos == 0:
         # add text Before
         self.val = val & self.val
@@ -200,8 +219,65 @@ proc onTextInput(this: DivRef, val:string){.nosinks.}=
         self.val = self.val.runeSubStr(0, self.cursorPos ) &
                     val &
                     self.val.runeSubStr(self.cursorPos)
-      self.cursorPos += val.len
+      # cursorPos counts runes; advance by runes
+      self.cursorPos += val.runeLen
       self.redrawFlag = rkFullRedraw
+
+
+proc keyDownEventListener(this:DivRef, e:sdl.Event):bool {.nosinks.}=
+  # hidevents always hands us a real key event; a bare trigger("keydown")
+  # would pass the default(sdl.Event) sentinel (type == EVENT_FIRST).
+  # Return false for anything we do not consume so the event keeps bubbling to
+  # window/pgui listeners (and so the scancode bus still fires at this scope).
+  if e.`type` != sdl.EVENT_KEY_DOWN:
+    return false
+
+  let self = MonoTextBox(this)
+  when debug > 1: echo "keyDownEventListener: key=", e.key.key
+
+  #* Enter leaves the single-line field. Blur touches focus and timed events,
+  #* so run it outside this element's data lock.
+  if e.key.key == sdl.SDLK_RETURN:
+    if self.onBlur != nil:
+      self.onBlur(this)
+    return true
+
+  withLock self.lock:
+    #* Ctrl+Z: single-level undo back to the value snapshotted at focus
+    if (e.key.`mod`.uint32 and sdl.KMOD_CTRL) != 0'u32 and e.key.key == sdl.SDLK_Z:
+      self.val = self.undoVal
+      self.cursorPos = self.undoVal.runeLen
+      self.selectionStart = self.cursorPos
+      self.redrawFlag = rkFullRedraw
+      return true
+
+    case e.key.key
+    of sdl.SDLK_LEFT:
+      if self.cursorPos > 0: dec self.cursorPos
+    of sdl.SDLK_RIGHT:
+      if self.cursorPos < self.val.runeLen: inc self.cursorPos
+    of sdl.SDLK_HOME:
+      self.cursorPos = 0
+    of sdl.SDLK_END:
+      self.cursorPos = self.val.runeLen
+    of sdl.SDLK_BACKSPACE:
+      # remove the rune before the cursor; runeSubStr length counts runes
+      if self.cursorPos > 0:
+        self.val = self.val.runeSubStr(0, self.cursorPos - 1) &
+                   self.val.runeSubStr(self.cursorPos)
+        dec self.cursorPos
+    of sdl.SDLK_DELETE:
+      # remove the rune at the cursor
+      if self.cursorPos < self.val.runeLen:
+        self.val = self.val.runeSubStr(0, self.cursorPos) &
+                   self.val.runeSubStr(self.cursorPos + 1)
+    else:
+      return false
+
+    #! cursor moved or text edited: collapse the selection and repaint
+    self.selectionStart = self.cursorPos
+    self.redrawFlag = rkFullRedraw
+    result = true
 
 
 
@@ -276,7 +352,7 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
         discard sdl.setRenderClipRect(this.window.renderer, clipRect.addr)
 
         if this.pgui.focusElem == this:
-          # draw cursor
+          #* draw cursor
 #[           let elapsedTicks = getMonoTime().ticks - this.lastDrawTick
           if elapsedTicks > 500_000_000.int64: # nanoseconds
             this.drawCursor = not this.drawCursor
@@ -292,13 +368,18 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
               nil, addr screenFRect)           
 
         else:
-          # only texturecache plays here
+          #* only texturecache plays here
           discard this.window.renderer.renderTexture(
               this.textureCache,
               nil, addr screenFRect)
       #=============================================
+
+
     else:
-      # if need to redraw, check if cache setted up
+      #*--------------------------------------------
+      #*          ---== REDRAWING ==---
+      #*--------------------------------------------
+      #* if need to redraw, check if cache setted up
       # todo setup cache at recalc
       if this.textureCache != nil:
         sdl.destroyTexture(this.textureCache)
@@ -364,6 +445,7 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
         )
 
         #* center text --------------------------
+        #TODO: textFRect clippping to this.w this.h, add padding 2px for beauty
         if canvasFRect.h > surface.h.cfloat:
           textFRect.y = (canvasFRect.h - surface.h.cfloat) / 2.0
         #[if canvasFRect.w > surface.w.cfloat:

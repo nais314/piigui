@@ -1,6 +1,7 @@
 import
   sdl3 as sdl,
-  sdl3_ttf as ttf
+  sdl3_ttf as ttf,
+  piigui/sdl3_aliases
 
 import piigui
 import piigui/[types, style, simple, hidevents]
@@ -101,10 +102,11 @@ let quitBtn = flexRow(gui.rootElem, 0, "quitRow", "", "100%", "8%")
 let quit = quitBtn.newDosBtn(
   name = "quitBtn", width = "25%", height = "100%",
   text = "quit", shadowSizePx = 3)
-proc quitBtnonClick(this: DivRef) =
+proc quitBtnonClick(this: DivRef, e: sdl.Event):bool =
   var sdlevent: sdl.Event
   sdlevent.`type` = sdl.EVENT_QUIT
   discard sdl.pushEvent(sdlevent)
+  return true
 quit.addEventListener("click", quitBtnonClick)
 
 ###########################################

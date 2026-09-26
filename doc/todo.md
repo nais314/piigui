@@ -2,6 +2,9 @@
 
 ## TODO
 
+- pgui.focusElem to window.focusElem redesign
+- isFocused*: bool proc for DivRef
+
 - fonts should be property of window for multi screen multi dpi
 
 - types.nim
@@ -24,6 +27,8 @@
 - 9-scale:
   discard SDL_SetTextureColorMod(tex, 255, 128, 128)   # multiplies RGB
   discard SDL_SetTextureAlphaMod(tex, 200)
+
+- DosBtn variant, which uses hover or focus style or both - currently using color/backgroundColor for pressed state 0/1
 
 ### complex gui elements
 

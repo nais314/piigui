@@ -33,7 +33,7 @@ For every non-trivial change, proactively inspect and report:
   opportunities for small templates or helpers.
 - Memory and resource safety: Nim ref lifetimes and cycles, SDL window,
   renderer, surface, texture, font, RWops, and subsystem cleanup, plus cleanup
-  on error paths.
+  on error paths. Check if `=destroy` change needed.
 - Thread safety: shared mutable state, channel ownership, main-thread SDL
   access, callback lifetimes, and shutdown ordering.
 - Boundary safety: integer and unsigned overflow, sequence bounds, sentinel

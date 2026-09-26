@@ -179,6 +179,7 @@ type
     scale*:float=1.0.float # TODO: implement
     #ddpi*, hdpi*, vdpi*: cfloat # SDL_WINDOWEVENT_MOVED
     redrawFlag*:bool=false
+    listeners*: ListenerList
 
   #------------------------------------------------------
   Layer* = ref object of RootObj
@@ -317,8 +318,16 @@ type
 
   #------------------------------------------------------
 
+  # A listener action always receives the originating element and the event.
+  # `e` is either a real SDL event (passed by `trigger(..., e)`) or the
+  # no-event sentinel `default(sdl.Event)` used when `trigger` is called
+  # without one. Detect the sentinel with `e.`type` != sdl.EVENT_FIRST`:
+  # EVENT_FIRST == 0 is a range marker `pollEvent` never returns.
+  # The action returns true when it handled the event; `false` lets the event
+  # keep bubbling to the next scope (element -> window -> pgui). Always return
+  # false for keys you do not consume, otherwise bubbling stops here.
   Listener* = tuple[name:string,
-                    actions: seq[proc(source:DivRef):void]]
+                    actions: seq[proc(source:DivRef, e:sdl.Event):bool]]
   ListenerList* = seq[Listener]
   #------------------------------------------------------
 

@@ -1090,7 +1090,7 @@ template destroyFonts*(pgui: Pgui) = closeAllFonts(pgui)
 proc addEventListener*(
         this:DivRef,
         evtname:string,
-        fun:proc(source:DivRef):void)=
+        fun:proc(source:DivRef, e:sdl.Event):bool)=
   var exists = false
   var newListener: Listener
   for i in 0..this.listeners.high:
@@ -1104,30 +1104,114 @@ proc addEventListener*(
     this.listeners.add(newListener)
 
 
-proc removeEventListener*(this:DivRef, evtname:string, fun:proc(source:DivRef):void)=
-  for i in 0..this.listeners.high:
+proc removeEventListener*(this:DivRef, evtname:string, fun:proc(source:DivRef, e:sdl.Event):bool)=
+  for i in countdown(this.listeners.high, 0):
     if this.listeners[i].name == evtname:
-      for j in 0..this.listeners[i].actions.high:
+      for j in countdown(this.listeners[i].actions.high, 0):
         if this.listeners[i].actions[j] == fun:
           this.listeners[i].actions.del(j)
+      if this.listeners[i].actions.len == 0:
+        this.listeners.del(i)
 
 
-proc trigger*(this:DivRef, evtname:string ):bool{.discardable.}=
+proc trigger*(this:DivRef, evtname:string, e:sdl.Event = default(sdl.Event)):bool{.discardable.}=
+  ## Dispatches `evtname` to this element's listeners, passing `e` through.
+  ## When `trigger` is called without an event, `e` is the zero value
+  ## `default(sdl.Event)`. A listener tells a real event from that sentinel with
+  ## `if e.`type` != sdl.EVENT_FIRST:` (EVENT_FIRST == 0; pollEvent never
+  ## delivers it). All matching listeners run in registration order. Returns
+  ## true when at least one of them reported the event as handled (returned
+  ## true); otherwise false, so the event may bubble to window/pgui listeners.
   result = false
   for i in 0..this.listeners.high:
     if this.listeners[i].name == evtname:
       for j in 0..this.listeners[i].actions.high:
-        this.listeners[i].actions[j](this)
-      result = true
+        if this.listeners[i].actions[j](this, e):
+          result = true
 
 
-proc trigger*(pgui:Pgui, evtname:string ):bool{.discardable.}=
+#--------------------------------------
+# PgWindow-level listeners
+#--------------------------------------
+
+proc addEventListener*(
+        this:PgWindow,
+        evtname:string,
+        fun:proc(source:DivRef, e:sdl.Event):bool)=
+  var exists = false
+  var newListener: Listener
+  for i in 0..this.listeners.high:
+    if this.listeners[i].name == evtname:
+      this.listeners[i].actions.add(fun)
+      exists = true
+  if not exists:
+    newListener.name = evtname
+    newListener.actions = @[]
+    newListener.actions.add(fun)
+    this.listeners.add(newListener)
+
+
+proc removeEventListener*(this:PgWindow, evtname:string, fun:proc(source:DivRef, e:sdl.Event):bool)=
+  for i in countdown(this.listeners.high, 0):
+    if this.listeners[i].name == evtname:
+      for j in countdown(this.listeners[i].actions.high, 0):
+        if this.listeners[i].actions[j] == fun:
+          this.listeners[i].actions.del(j)
+      if this.listeners[i].actions.len == 0:
+        this.listeners.del(i)
+
+
+proc trigger*(this:PgWindow, evtname:string, e:sdl.Event = default(sdl.Event)):bool{.discardable.}=
+  ## Dispatches `evtname` to this window's listeners; `source` is the window's
+  ## root element. Returns true when at least one listener handled the event.
+  result = false
+  for i in 0..this.listeners.high:
+    if this.listeners[i].name == evtname:
+      for j in 0..this.listeners[i].actions.high:
+        if this.listeners[i].actions[j](this.rootElem, e):
+          result = true
+
+
+#--------------------------------------
+# Pgui-level (system-wide) listeners
+#--------------------------------------
+
+proc addEventListener*(
+        pgui:Pgui,
+        evtname:string,
+        fun:proc(source:DivRef, e:sdl.Event):bool)=
+  var exists = false
+  var newListener: Listener
+  for i in 0..pgui.listeners.high:
+    if pgui.listeners[i].name == evtname:
+      pgui.listeners[i].actions.add(fun)
+      exists = true
+  if not exists:
+    newListener.name = evtname
+    newListener.actions = @[]
+    newListener.actions.add(fun)
+    pgui.listeners.add(newListener)
+
+
+proc removeEventListener*(pgui:Pgui, evtname:string, fun:proc(source:DivRef, e:sdl.Event):bool)=
+  for i in countdown(pgui.listeners.high, 0):
+    if pgui.listeners[i].name == evtname:
+      for j in countdown(pgui.listeners[i].actions.high, 0):
+        if pgui.listeners[i].actions[j] == fun:
+          pgui.listeners[i].actions.del(j)
+      if pgui.listeners[i].actions.len == 0:
+        pgui.listeners.del(i)
+
+
+proc trigger*(pgui:Pgui, evtname:string, e:sdl.Event = default(sdl.Event)):bool{.discardable.}=
+  ## Dispatches system-wide listeners. `source` is nil: "no element".
+  ## Returns true when at least one listener handled the event.
   result = false
   for i in 0..pgui.listeners.high:
     if pgui.listeners[i].name == evtname:
       for j in 0..pgui.listeners[i].actions.high:
-        pgui.listeners[i].actions[j](nil) #! nil means no DivRef, not gui elem
-      result = true
+        if pgui.listeners[i].actions[j](nil, e): #! nil means no DivRef, not gui elem
+          result = true
 #..............
 
 #--------------------------------------
@@ -1136,10 +1220,10 @@ proc trigger*(pgui:Pgui, evtname:string ):bool{.discardable.}=
 proc addEventListener*(
       elems:seq[DivRef],
       evtname:string,
-      fun:proc(source:DivRef):void)=
-  var exists = false
+      fun:proc(source:DivRef, e:sdl.Event):bool)=
   var newListener: Listener
   for controll in elems:
+    var exists = false #* must reset per element, else one match skips the rest
     for i in 0..controll.listeners.high:
       if controll.listeners[i].name == evtname:
         controll.listeners[i].actions.add(fun)
@@ -1154,7 +1238,7 @@ proc addEventListener*(
 proc removeEventListener*(
         elems:seq[DivRef],
         evtname:string,
-        fun:proc(source:DivRef):void)=
+        fun:proc(source:DivRef, e:sdl.Event):bool)=
   for control in elems:
     for i in countdown(control.listeners.high, 0):
       if control.listeners[i].name == evtname:
@@ -1165,14 +1249,14 @@ proc removeEventListener*(
           control.listeners.del(i)
 
 
-proc trigger*(elems:seq[DivRef], evtname:string ):bool=
+proc trigger*(elems:seq[DivRef], evtname:string, e:sdl.Event = default(sdl.Event)):bool=
   result = false
   for controll in elems:
     for i in 0..controll.listeners.high:
       if controll.listeners[i].name == evtname:
         for j in 0..controll.listeners[i].actions.high:
-          controll.listeners[i].actions[j](controll)
-        result = true 
+          if controll.listeners[i].actions[j](controll, e):
+            result = true
 
 
 

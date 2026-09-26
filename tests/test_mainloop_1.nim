@@ -1,7 +1,8 @@
 import
   sdl3 as sdl,
   sdl3_ttf as ttf,
-  std/monotimes, os, tables
+  std/monotimes, os, tables,
+  piigui/sdl3_aliases
 
 import piigui
 import piigui/[types, style, simple, hidevents]
@@ -68,11 +69,12 @@ discard leftFooter.newDosBtn(group="footBtn", width="25%", height="100%", text="
 let quitBtn = rightFooter.newDosBtn(group="footBtn", width="25%", text="quit",shadowSizePx=0)
 rootSSRT["footBtn"] = newStyleSheet()
 rootSSRT["footBtn"].backGroundColor = lighten(rootSSRT["mid"].backGroundColor)
-proc quitBtnonClick(this:DivRef)=
+proc quitBtnonClick(this:DivRef, e:sdl.Event):bool=
   var sdlevent: sdl.Event
   sdlevent.`type` = sdl.EVENT_QUIT
   discard sdl.pushEvent(sdlevent)
   echo "quitBtnonClick"
+  return true
 quitBtn.addEventListener("click", quitBtnonClick)
 #.....................
 

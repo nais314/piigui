@@ -20,11 +20,12 @@ pgui.rootElem.inlineStyle.alignContent = facCenter
 let quitBtn = pgui.rootElem.newDosBtn(width="25%", height="25%", text="quit")
 quitBtn.inlineStyle.setBackGroundColor(0xDDDDDDFF.HexColor)
 
-proc quitBtnonClick(this:DivRef)=
+proc quitBtnonClick(this:DivRef, e:sdl.Event):bool=
   var sdlevent: sdl.Event
   sdlevent.`type` = sdl.EVENT_QUIT
   discard sdl.pushEvent(sdlevent)
   echo "quitBtnonClick"
+  return true
 quitBtn.addEventListener("click", quitBtnonClick)
 
 

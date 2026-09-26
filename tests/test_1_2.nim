@@ -86,11 +86,12 @@ rightFooter.inlineStyle.justifyContent = fjcEnd
 discard leftFooter.newDosBtn(group="footBtn", width="25%", height="100%", text="nothing",shadowSizePx=0)
 let quitBtn = rightFooter.newDosBtn(group="footBtn", width="25%", text="quit",shadowSizePx=0)
 
-proc quitBtnonClick(this:DivRef)=
+proc quitBtnonClick(this:DivRef, e:sdl.Event):bool=
   var sdlevent: sdl.Event
   sdlevent.`type` = sdl.EVENT_QUIT
   discard sdl.pushEvent(sdlevent)
   echo "quitBtnonClick"
+  return true
 quitBtn.addEventListener("click", quitBtnonClick)
 #.....................
 
@@ -187,7 +188,7 @@ pgui.addTimedEvent(label1, 500_000_000, blink)
 #................
 
 
-proc switchTab(source:DivRef)=
+proc switchTab(source:DivRef, e:sdl.Event):bool=
   if source == tab1Btn:
     tab2Btn.onBlur(tab2Btn)
     tab3Btn.onBlur(tab3Btn)
@@ -203,6 +204,7 @@ proc switchTab(source:DivRef)=
     tab1Btn.onBlur(tab1Btn)
     content.layers[0].elems.setLen(0)
     piigui.copyElem(tabContent1, content, 0)
+  return true
 
 
 header.elems.addEventListener("click", switchTab)

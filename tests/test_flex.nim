@@ -1,6 +1,7 @@
 import
   sdl3 as sdl,
-  sdl3_ttf as ttf
+  sdl3_ttf as ttf,
+  piigui/sdl3_aliases
 
 import piigui
 import piigui/[types, style, simple, hidevents]
@@ -90,11 +91,12 @@ let quitBtn = footer.newDosBtn(
   name = "quitBtn", group = "tabbtn", width = "25%", height = "100%",
   text = "quit", shadowSizePx = 3)
 
-proc quitBtnonClick(this: DivRef) =
+proc quitBtnonClick(this: DivRef, e: sdl.Event):bool =
   var sdlevent: sdl.Event
   sdlevent.`type` = sdl.EVENT_QUIT
   discard sdl.pushEvent(sdlevent)
   echo "quitBtnonClick"
+  return true
 
 quitBtn.addEventListener("click", quitBtnonClick)
 
@@ -152,7 +154,7 @@ proc switchContent() =
   content.layers[0].elems.setLen(0)
   piigui.copyElem(demoContainers[currentMode][currentCase], content, 0)
 
-proc onTabs1Click(source: DivRef) =
+proc onTabs1Click(source: DivRef, e: sdl.Event):bool =
   case source.name:
     of "tab1ColBtn":
       currentMode = 0
@@ -162,8 +164,9 @@ proc onTabs1Click(source: DivRef) =
       tab1ColBtn.onBlur(tab1ColBtn)
     else: discard
   switchContent()
+  return true
 
-proc onTabs2Click(source: DivRef) =
+proc onTabs2Click(source: DivRef, e: sdl.Event):bool =
   case source.name:
     of "tab2StartBtn": currentCase = 0
     of "tab2EndBtn": currentCase = 1
@@ -173,6 +176,7 @@ proc onTabs2Click(source: DivRef) =
   for b in [tab2StartBtn, tab2EndBtn, tab2CenterBtn, tab2StretchBtn]:
     if b.name != source.name: b.onBlur(b)
   switchContent()
+  return true
 
 tab1ColBtn.addEventListener("click", onTabs1Click)
 tab1RowBtn.addEventListener("click", onTabs1Click)

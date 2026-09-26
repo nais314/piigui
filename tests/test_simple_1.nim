@@ -1,7 +1,8 @@
 import
   sdl3 as sdl,
   sdl3_ttf as ttf,
-  std/monotimes, os, tables
+  std/monotimes, os, tables,
+  piigui/sdl3_aliases
 
 import piigui
 import piigui/[types, style, simple, hidevents]
@@ -19,11 +20,12 @@ gui.rootElem.inlineStyle.alignContent = facCenter
 let quitBtn = gui.rootElem.newDosBtn(width="25%", height="25%", text="quit")
 quitBtn.inlineStyle.setBackGroundColor(0xDDDDDDFF.HexColor)
 
-proc quitBtnonClick(this:DivRef)=
+proc quitBtnonClick(this:DivRef, e:sdl.Event):bool=
   var sdlevent: sdl.Event
   sdlevent.`type` = sdl.EVENT_QUIT
   discard sdl.pushEvent(sdlevent)
   echo "quitBtnonClick"
+  return true
 quitBtn.addEventListener("click", quitBtnonClick)
 
 

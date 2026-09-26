@@ -1,6 +1,7 @@
 import
   sdl3 as sdl,
-  sdl3_ttf as ttf
+  sdl3_ttf as ttf,
+  piigui/sdl3_aliases
 
 import piigui
 import piigui/[types, style, simple, hidevents]
@@ -105,10 +106,11 @@ for i in 0 ..< nRows:
   echo r.name, ": row width ", rowW, "px, children ", idx, ", summed width ~", used
 
 if quitCandidate != nil:
-  proc quitOnClick(this: DivRef) =
+  proc quitOnClick(this: DivRef, e: sdl.Event):bool =
     var sdlevent: sdl.Event
     sdlevent.`type` = sdl.EVENT_QUIT
     discard sdl.pushEvent(sdlevent)
+    return true
   quitCandidate.addEventListener("click", quitOnClick)
   echo "quit button: ", quitCandidate.name
 else:

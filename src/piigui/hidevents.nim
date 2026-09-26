@@ -47,7 +47,8 @@ proc hid_events*(pgui:Pgui): bool = # exit pgui on true
         markElemWindowDirty(pgui.focusElem)
       else:
         markWindowDirty(pgui, windowID)
-      # Exit on Escape key press
+      #! Exit on Escape key press
+      # Drag stop on Escape
       if e.key.key == sdl.SDLK_ESCAPE:
         if pgui.mouseSource != nil:
           # Escape cancels the drag: restore the begin state
@@ -59,15 +60,28 @@ proc hid_events*(pgui:Pgui): bool = # exit pgui on true
           pgui.mouseSource = nil
         else:
           return true
+      #......... end ESC ..................  
       when debug >= 2:
         echo e.key.key
         echo e.key.scancode.int
 
+      #* keyboard bubbling: focusElem -> window -> pgui. Each scope tries the
+      #* fine-grained "keydown" bus, then the legacy per-scancode bus; the
+      #* first listener that returns true handles the event and stops bubbling.
+      var handled = false
       if pgui.focusElem != nil:
-        if not pgui.focusElem.trigger($e.key.scancode):
-          pgui.trigger($e.key.scancode)
-      else:
-        pgui.trigger($e.key.scancode)
+        handled = pgui.focusElem.trigger("keydown", e)
+        if not handled:
+          handled = pgui.focusElem.trigger($e.key.scancode, e)
+      if not handled and pgui.windows.hasKey(windowID):
+        let win = pgui.windows[windowID]
+        handled = win.trigger("keydown", e)
+        if not handled:
+          handled = win.trigger($e.key.scancode, e)
+      if not handled:
+        handled = pgui.trigger("keydown", e)
+        if not handled:
+          discard pgui.trigger($e.key.scancode, e)
 
 
     elif e.`type` == sdl.EVENT_MOUSE_MOTION: #! ----- MouseMotion
@@ -152,18 +166,26 @@ proc hid_events*(pgui:Pgui): bool = # exit pgui on true
     
         if pgui.mouseSource != nil:
           if pgui.mouseSource == eventTarget:
+            when debug > 0: echo "pgui.mouseSource == eventTarget"
+            # Blur inputs on panel click
+            if eventTarget.pgui.focusElem != nil and eventTarget.pgui.focusElem != eventTarget:
+              if eventTarget.pgui.focusElem.onBlur != nil:
+                eventTarget.pgui.focusElem.onBlur(eventTarget.pgui.focusElem)
+              if eventTarget.onFocus != nil: #****
+                eventTarget.onFocus(eventTarget)
+            eventTarget.pgui.focusElem = eventTarget
             # Click:
             if eventTarget.onClick != nil:
               eventTarget.onClick(eventTarget, e)
-            eventTarget.trigger("click")
+            eventTarget.trigger("click", e)
 
           else: # ~ on other elem = possible Drop
+            when debug > 0: echo "pgui.mouseSource != eventTarget"
             if pgui.mouseSource.onDragEnd != nil: #* draggable true
               pgui.mouseSource.onDragEnd(pgui.mouseSource)
               #! Drop
               if eventTarget.onDrop != nil:
                 eventTarget.onDrop(eventTarget) #TODO FILEDROP!!!
-            
             if eventTarget.onFocus != nil: #****
               eventTarget.onFocus(eventTarget)
 
@@ -185,16 +207,16 @@ proc hid_events*(pgui:Pgui): bool = # exit pgui on true
         var handled = false
         if e.wheel.y > 0.0:
           when debug > 0: echo "wheelup"
-          handled = pgui.hoverElem.trigger("wheelup")
+          handled = pgui.hoverElem.trigger("wheelup", e)
         elif e.wheel.y < 0.0:
           when debug > 0: echo "wheeldown"
-          handled = pgui.hoverElem.trigger("wheeldown")
+          handled = pgui.hoverElem.trigger("wheeldown", e)
         elif e.wheel.x > 0.0:
           when debug > 0: echo "wheelright"
-          handled = pgui.hoverElem.trigger("wheelright")
+          handled = pgui.hoverElem.trigger("wheelright", e)
         elif e.wheel.x < 0.0:
           when debug > 0: echo "wheelleft"
-          handled = pgui.hoverElem.trigger("wheelleft")
+          handled = pgui.hoverElem.trigger("wheelleft", e)
 
         # if no listener handled it, scroll the nearest scrollable ancestor
         if not handled:

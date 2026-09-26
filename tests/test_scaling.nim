@@ -33,7 +33,7 @@ scaleLabel.inlineStyle.setBackGroundColor(0x99aa99FF.HexColor)
 
 
 let plusBtn = content.newDosBtn(width="150px", height="150px", text="+")
-proc plusBtnClick(this:DivRef)=
+proc plusBtnClick(this:DivRef, e:sdl.Event):bool=
   this.window.scale += 0.125
 
   scaleLabel.setText($this.window.scale)
@@ -46,17 +46,19 @@ proc plusBtnClick(this:DivRef)=
       if fontObj.fontPtr != nil: ttf.closeFont(fontObj.fontPtr)
       fontObj.fontPtr = newFont
 
+  return true
 plusBtn.addEventListener("click", plusBtnClick)
 plusBtn.inlineStyle.setBackGroundColor(0xccDDDDFF.HexColor)
 #..........................
 
 
 let minusBtn = content.newDosBtn(width="15%", height="15%", text="-")
-proc minusBtnClick(this:DivRef)=
+proc minusBtnClick(this:DivRef, e:sdl.Event):bool=
   this.window.scale -= 0.125
 
   scaleLabel.setText($this.window.scale)
   pgui.rootElem.recalcDOM()
+  return true
 minusBtn.addEventListener("click", minusBtnClick)    
 #__________________________
 
@@ -65,11 +67,12 @@ minusBtn.addEventListener("click", minusBtnClick)
 let quitBtn = content.newDosBtn(width="6%", height="6%", text="quit")
 quitBtn.inlineStyle.setBackGroundColor(0xDDDDDDFF.HexColor)
 
-proc quitBtnonClick(this:DivRef)=
+proc quitBtnonClick(this:DivRef, e:sdl.Event):bool=
   var sdlevent: sdl.Event
   sdlevent.`type` = sdl.EVENT_QUIT
   discard sdl.pushEvent(sdlevent)
   echo "quitBtnonClick"
+  return true
 quitBtn.addEventListener("click", quitBtnonClick)
 
 

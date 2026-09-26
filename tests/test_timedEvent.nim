@@ -1,6 +1,7 @@
 import
   sdl3 as sdl,
-  sdl3_ttf as ttf
+  sdl3_ttf as ttf,
+  piigui/sdl3_aliases
 
 import piigui
 import piigui/[types, style, simple, hidevents]
