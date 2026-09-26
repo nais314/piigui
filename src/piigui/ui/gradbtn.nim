@@ -88,7 +88,7 @@ proc newGradBtn*(parent: DivRef,
   recalcStyle(result)
   # ....
   result.draw = draw
-  result.redrawFlag = 1
+  result.redrawFlag = rkFullRedraw
 
   result.onMouseButtonDown = onMouseButtonDown
   result.onMouseButtonUp = onMouseButtonUp
@@ -135,7 +135,7 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
     # clipRect (screen coordinates) hides overflow: the intersection of all
     # ancestors' on-screen rects. It must clip ONLY the final on-screen copy,
     # not the texture-local rendering below.
-    var clipRect = visibleClipRect(this, scrollXArg, scrollYArg)
+    var clipRect = this.clipRect
     if clipRect.w == 0 or clipRect.h == 0:
       #! off-screen: skip render; redrawFlag stays set so it repaints when visible again
       return
@@ -151,7 +151,7 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
 
     # .............................
     #! we need to redraw, even if not changed
-    if this.redrawFlag == 0 and this.textureCache != nil:
+    if this.redrawFlag != rkFullRedraw and this.textureCache != nil:
         discard sdl.setRenderClipRect(this.window.renderer, clipRect.addr)
         discard this.window.renderer.renderTexture(
             this.textureCache,
@@ -319,7 +319,7 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
     # reset clipping
     discard sdl.setRenderClipRect(this.window.renderer, nil)
 
-    this.redrawFlag = 0
+    this.redrawFlag = rkNoRedraw
 
 
 
@@ -341,12 +341,12 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
 ]##
 proc onMouseButtonDown(this:DivRef){.nosinks.}=
   GradBtn(this).state = 1
-  this.redrawFlag = 1
+  this.redrawFlag = rkFullRedraw
   #this.setActiveStyle("focus")
 
 proc onMouseButtonUp(this:DivRef){.nosinks.}=
   GradBtn(this).state = 0
-  this.redrawFlag = 1
+  this.redrawFlag = rkFullRedraw
   #setDefaultStyle(this)
   #this.pgui.hoverElem = nil
 
@@ -355,7 +355,7 @@ proc gradbtn_onClick*(this:DivRef, e:sdl.Event){.nosinks.}=
   discard
   ## event on MouseDown
   #[ GradBtn(this).state = 1
-  this.redrawFlag = 1
+  this.redrawFlag = rkFullRedraw
   this.setActiveStyle("focus") ]#
 
   
@@ -366,7 +366,7 @@ proc gradbtn_onFocus*(this:DivRef){.nosinks.}=
   #this.pgui.hoverElem = nil
   #setDefaultStyle(this)
   #[ GradBtn(this).state = 0
-  this.redrawFlag = 1
+  this.redrawFlag = rkFullRedraw
   discard trigger(this, "click") ]#
 
 proc gradbtn_onDragEnd*(this:DivRef){.nosinks.}=
@@ -374,11 +374,11 @@ proc gradbtn_onDragEnd*(this:DivRef){.nosinks.}=
 
   setDefaultStyle(this)
   GradBtn(this).state = 0
-  this.redrawFlag = 1
+  this.redrawFlag = rkFullRedraw
 
 
 
 proc setText*(this:GradBtn, text:string)=
   withLock this.lock:
     this.text = text
-  this.redrawFlag = 1
+  this.redrawFlag = rkFullRedraw

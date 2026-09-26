@@ -314,7 +314,7 @@ proc recalcStyle*(this:DivRef, recursive:bool=false){.gcsafe.}=
     # finally
     #--------------------------------------------
 
-    this.redrawFlag = 1
+    this.redrawFlag = rkFullRedraw
 
     if not this.styleCache.hasKey(this.activeStyle): #safeguard
       this.activeStyle = "default"
@@ -409,7 +409,7 @@ proc setActiveStyle*(this:DivRef, styleName:string,
       if this.styleCache[styleName] != nil:
         this.prevStyle = this.activeStyle
         this.activeStyle = styleName
-        this.redrawFlag = 1
+        this.redrawFlag = rkFullRedraw
 
         if recalcChildrenStyles:
           this.recalcStyle(recursive=true)
@@ -421,9 +421,12 @@ proc setDefaultStyle*(this:DivRef,
                       recalcChildrenStyles:bool=false)=
   if this != nil:
     withLock this.lock:
-      this.activeStyle = "default"
-      if not recalcChildrenStyles:
-        this.redrawFlag = 1
+      # only dirty the element when the style actually changes, mirroring
+      # setActiveStyle; repeated hover-exit calls must not force a repaint
+      if this.activeStyle != "default":
+        this.activeStyle = "default"
+        if not recalcChildrenStyles:
+          this.redrawFlag = rkFullRedraw
     if recalcChildrenStyles:
       this.recalcStyle(recursive=true)
 #.........................

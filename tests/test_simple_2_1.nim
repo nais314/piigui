@@ -68,19 +68,21 @@ textinput1.setBackGroundColor(220,220,220,255)
 pgui.rootElem.recalcStyle(true)
 pgui.rootElem.recalcDOM()
 
-
+#*#############################################
+#!        ---== MAIN LOOP AHEAD ==---
+#*#############################################
 var done:bool=false
 while not done:
-  let startTime = getMonoTime() # FPS capping
+  let nowNs = getMonoTime().ticks # FPS capping
 
   done = pgui.hid_events()
-  pgui.runTimedEvents()
+  pgui.runTimedEvents(nowNs)
 
   pgui.drawWindows() #* includes renderer.present()
 
   # FPS capping
-  let endTime = getMonoTime()
-  var elapsedTime = endTime.ticks - startTime.ticks
+  let endNs = getMonoTime().ticks
+  var elapsedTime = endNs - nowNs
   #echo elapsedTime 
   elapsedTime = elapsedTime div 1_000_000 # ns to ms convert
   #echo elapsedTime 

@@ -23,9 +23,9 @@ import unicode
 ###########################################
 #TODO: toggle button not active at start
 
-var gui = newSimpleGui()
-gui.rootElem.setPadding(10)
-gui.rootElem.setBackGroundColor(0x808080FF.HexColor)
+var pgui = newSimpleGui()
+pgui.rootElem.setPadding(10)
+pgui.rootElem.setBackGroundColor(0x808080FF.HexColor)
 
 
 rootSSRT["white"] = newStyleSheet()
@@ -55,7 +55,7 @@ rootSSRT["DosBtn"].pseudoStyles["hover"].backGroundColor = (r:0, g:230, b:191, a
 
 # frame structure .......................
 let header = row(
-  parent = gui.rootElem,
+  parent = pgui.rootElem,
   layer = 0,
   name = "header",
   group = "",
@@ -66,11 +66,11 @@ let header = row(
 #.....................
 
 let content = flexColumn(
-  gui.rootElem, 0, "content", "", "100%", "80%", ["white"]
+  pgui.rootElem, 0, "content", "", "100%", "80%", ["white"]
   )
 #.....................
 let footer = flexRow(
-  gui.rootElem, 0, "footer", "", "100%", "10%", ["lightgray"]
+  pgui.rootElem, 0, "footer", "", "100%", "10%", ["lightgray"]
   )
 footer.setPadding(2)
 
@@ -109,7 +109,7 @@ let tab3Btn = header.newAToggleBtn(
 
 
 # tab contents -----
-let tabContentBox = gui.activeWindow.newRoot()
+let tabContentBox = pgui.activeWindow.newRoot()
 #................
 
 let tabContent1 = tabContentBox.column(
@@ -173,7 +173,7 @@ rootSSRT["Label1"].pseudoStyles["blink"].color = (r:0, g:0, b:0, a:255)
 rootSSRT["Label1"].pseudoStyles["blink"].backGroundColor = (r:0, g:0, b:0, a:0)
 
 
-proc blink(this: DivRef) =
+proc blink(this: DivRef, nowNs: int64) =
   if this.activeStyle != "blink":
     this.setActiveStyle("blink")
     #echo "this.setActiveStyle(blink) " & this.activeStyle
@@ -182,7 +182,7 @@ proc blink(this: DivRef) =
     this.setActiveStyle("default")
     #echo "this.setActiveStyle(Label1)" & this.activeStyle
 
-gui.addTimedEvent(label1, 500_000_000, blink)
+pgui.addTimedEvent(label1, 500_000_000, blink)
 
 #................
 
@@ -216,11 +216,11 @@ piigui.copyElem(tabContent1, content, 0)
 
 #----------------------------------------
 
-gui.rootElem.recalcStyle(true)
+pgui.rootElem.recalcStyle(true)
 
 tab1Btn.onFocus(tab1Btn)
 
-gui.rootElem.recalcDOM()
+pgui.rootElem.recalcDOM()
 
 
 echo " ++++++ RECALCED +++++++"
@@ -234,21 +234,24 @@ echo "quitBtn x/w: ", quitBtn.x1, " / ", quitBtn.w
 
 import std.monotimes
 
+#*#############################################
+#!        ---== MAIN LOOP AHEAD ==---
+#*#############################################
 var done:bool=false
 while not done:
-  let smtick = getMonoTime()
+  let nowNs = getMonoTime().ticks # FPS capping
 
-  done = gui.hid_events()
-  gui.runTimedEvents()
+  done = pgui.hid_events()
+  pgui.runTimedEvents(nowNs)
 
-  gui.drawDom(gui.rootElem)
-  discard gui.renderer.present()
+  pgui.drawWindows() #* includes renderer.present()
 
-  let emtick = getMonoTime()
-  var st = emtick.ticks - smtick.ticks
-  #echo st 
-  st = st div 1_000_000
-  #echo st 
-  sleep(max(0, 16 - st.int))
+  # FPS capping
+  let endNs = getMonoTime().ticks
+  var elapsedTime = endNs - nowNs
+  #echo elapsedTime 
+  elapsedTime = elapsedTime div 1_000_000 # ns to ms convert
+  #echo elapsedTime 
+  sleep(max(0, 16 - elapsedTime.int))
 
-closeGui(gui)
+closeGui(pgui)

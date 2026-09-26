@@ -82,17 +82,17 @@ pgui.rootElem.recalcDOM()
 
 var done:bool=false
 while not done:
-  let startTime = getMonoTime() # FPS capping
+  let nowNs = getMonoTime().ticks # FPS capping
 
   done = pgui.hid_events()
-  pgui.runTimedEvents()
+  pgui.runTimedEvents(nowNs)
 
   pgui.drawDom(pgui.rootElem)
   discard pgui.renderer.present()
 
   # FPS capping
-  let endTime = getMonoTime()
-  var elapsedTime = endTime.ticks - startTime.ticks
+  let endNs = getMonoTime().ticks
+  var elapsedTime = endNs - nowNs
   #echo elapsedTime 
   elapsedTime = elapsedTime div 1_000_000 # ns to ms convert
   #echo elapsedTime 

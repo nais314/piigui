@@ -170,7 +170,7 @@ proc recalcFlex*(this: Divref, layer: Layer): tuple[w,h:int] =
 
   # recurse into children, so the whole tree gets its coordinates bottom-up
   for elem in layer.elems:
-    elem.redrawFlag = 1
+    elem.redrawFlag = rkFullRedraw
     for elemLayer in elem.layers:
       if elemLayer.recalc != nil:
         (elemLayer.w, elemLayer.h) = elemLayer.recalc(elem, elemLayer)

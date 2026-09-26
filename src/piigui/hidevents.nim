@@ -84,12 +84,13 @@ proc hid_events*(pgui:Pgui): bool = # exit pgui on true
         my)
 
       if eventTarget != nil:
-        markElemWindowDirty(eventTarget)
         pgui.currentWindowId = windowID
-        
+        let previousHover = pgui.hoverElem
+
         # if there was onmousedown before
         # then its a drag/dragover operation:
         if pgui.mouseSource != nil:
+          markElemWindowDirty(eventTarget)
           if not pgui.mouseSource.dragSaved and pgui.mouseSource.onDragStart != nil:
             pgui.mouseSource.onDragStart(pgui.mouseSource)
           if pgui.mouseSource.onDragOver != nil:
@@ -100,12 +101,20 @@ proc hid_events*(pgui:Pgui): bool = # exit pgui on true
         # elif its a simple hover event:
         elif eventTarget.onHover != nil:
           eventTarget.onHover(eventTarget)
-        
+          # only repaint when the hover target changed; the default hover
+          # handler is a no-op when this element is already hovered
+          if eventTarget != previousHover:
+            markElemWindowDirty(eventTarget)
+            if previousHover != nil:
+              markElemWindowDirty(previousHover)
+
         # else maybe cleanup needed?
         else:
-          if pgui.hoverElem != nil:
-            pgui.hoverElem.setDefaultStyle()
+          if previousHover != nil:
+            previousHover.setDefaultStyle()
             pgui.hoverElem = nil
+            markElemWindowDirty(previousHover)
+            markElemWindowDirty(eventTarget)
 
 
     elif e.`type` == sdl.EVENT_MOUSE_BUTTON_DOWN: #! ----- MOUSEBUTTONDOWN

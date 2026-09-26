@@ -129,16 +129,16 @@ echo "table1 innerW: ", table1.innerW, " vs w: ", table1.w,
 
 var done: bool = false
 while not done:
-  let smtick = getMonoTime()
+  let nowNs = getMonoTime().ticks
 
   done = gui.hid_events()
-  gui.runTimedEvents()
+  gui.runTimedEvents(nowNs)
 
   gui.drawDom(gui.rootElem)
   discard gui.renderer.present()
 
-  let emtick = getMonoTime()
-  var st = emtick.ticks - smtick.ticks
+  let endNs = getMonoTime().ticks
+  var st = endNs - nowNs
   st = st div 1_000_000
   sleep(max(0, 16 - st.int))
 

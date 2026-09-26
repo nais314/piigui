@@ -126,7 +126,7 @@ proc newScrollBarPart(parent: DivRef, name, typeName, styleName: string): DivRef
     result.styles.add((styleName, rootSSRT[styleName]))
   result.activeStyle = "default"
   recalcStyle(result)
-  result.redrawFlag = 1
+  result.redrawFlag = rkFullRedraw
 
 #-------------------------------------------------------
 # drawing
@@ -242,7 +242,7 @@ proc scrollTo*(this: DivRef, x, y: int) =
   let maxY = max(0, this.innerH - this.h)
   this.scrollX = clampInt(x, 0, maxX)
   this.scrollY = clampInt(y, 0, maxY)
-  this.redrawFlag = 1
+  this.redrawFlag = rkFullRedraw
   if this.scrollbar != nil:
     recalcScrollbar(this.scrollbar)
 
@@ -347,14 +347,14 @@ proc scrollPart_onHover(this: DivRef) {.nosinks.} =
 
 proc scrollArrow_onMouseButtonDown(this: DivRef) {.nosinks.} =
   this.setActiveStyle("focus")
-  this.redrawFlag = 1
+  this.redrawFlag = rkFullRedraw
 
 proc scrollArrow_onMouseButtonUp(this: DivRef) {.nosinks.} =
   if this.pgui.hoverElem == this:
     this.setActiveStyle("hover")
   else:
     this.setDefaultStyle()
-  this.redrawFlag = 1
+  this.redrawFlag = rkFullRedraw
 
 proc scrollArrow_onClick(this: DivRef, e: sdl.Event) {.nosinks.} =
   let container = this.parent
@@ -401,7 +401,7 @@ proc slider_onDragStart(this: DivRef) {.nosinks.} =
     this.origY1 = container.scrollY
     this.dragSaved = true
   this.setActiveStyle("focus")
-  this.redrawFlag = 1
+  this.redrawFlag = rkFullRedraw
 
 proc slider_onDragOver(this: DivRef) {.nosinks.} =
   ## map the cursor to a clamped scroll offset (the slider stays in the track)
@@ -429,7 +429,7 @@ proc slider_onDragOver(this: DivRef) {.nosinks.} =
 proc slider_onDragEnd(this: DivRef) {.nosinks.} =
   this.dragSaved = false
   this.setDefaultStyle()
-  this.redrawFlag = 1
+  this.redrawFlag = rkFullRedraw
 
 proc slider_onDragCancel(this: DivRef) {.nosinks.} =
   ## Escape: restore the begin scroll
@@ -438,7 +438,7 @@ proc slider_onDragCancel(this: DivRef) {.nosinks.} =
     scrollTo(container, this.origX1, this.origY1)
   this.dragSaved = false
   this.setDefaultStyle()
-  this.redrawFlag = 1
+  this.redrawFlag = rkFullRedraw
 
 #-------------------------------------------------------
 # construction

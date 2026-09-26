@@ -157,7 +157,7 @@ proc recalcH*(this:DivRef, layer:Layer):tuple[w,h:int]=
 
 
   for elem in layer.elems:
-    elem.redrawFlag = 1
+    elem.redrawFlag = rkFullRedraw
     for elemLayer in elem.layers:
       if elemLayer.recalc != nil:
         (elemLayer.w, elemLayer.h) = elemLayer.recalc(elem, elemLayer)

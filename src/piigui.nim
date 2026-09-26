@@ -290,8 +290,11 @@ proc visibleClipRect*(this: DivRef, scrollX, scrollY: int): sdl.Rect =
   ## on-screen rects of every ancestor, each shifted by its own
   ## ancestors' accumulated scroll. A deep child is therefore clipped
   ## inside every scrollable ancestor, not only its direct parent.
-  ## `scrollX/Y` is the accumulated scroll of `this`'s ancestors,
-  ## as passed down by drawDOMImpl.
+  ## `scrollX/Y` is the accumulated scroll of `this`'s ancestors.
+  ##
+  ## This upward walk is O(depth), so it is called once per drawDOM() to seed
+  ## the running clip; drawDOMImpl then propagates it top-down in O(1) per
+  ## element (stored in DivObj.clipRect).
   if this.parent == nil:
     return sdl.Rect((x: this.x1.cint, y: this.y1.cint,
             w: this.w.cint, h: this.h.cint))
@@ -365,13 +368,12 @@ proc drawDivRef*(this:DivRef, scrollX, scrollY:int)=
       echo "___________"
 
   #.............................
-  # clipRect (screen coordinates) hides overflow:
-  # the intersection of all ancestors' on-screen rects, so content
-  # stays clipped inside every scrollable ancestor, not just the parent.
-  # (scrollX/Y = this element's accumulated ancestor scroll)
+  # clipRect (screen coordinates) hides overflow: this element's clip is the
+  # intersection of all ancestors' on-screen rects, precomputed top-down by
+  # drawDOMImpl into this.clipRect.
   # It must clip ONLY the final on-screen copy, not the texture-local
   # rendering below.
-  var clipRect = visibleClipRect(this, scrollX, scrollY)
+  var clipRect = this.clipRect
   #.............................
 
   # backgroundFRect is the subpixel float rect for accelerated painting
@@ -395,7 +397,7 @@ proc drawDivRef*(this:DivRef, scrollX, scrollY:int)=
 
   #.............................
   # we need to redraw, even if not changed
-  if this.redrawFlag == 0 and this.textureCache != nil:
+  if this.redrawFlag != rkFullRedraw and this.textureCache != nil:
       discard sdl.setRenderClipRect(this.window.renderer, clipRect.addr)
       discard this.window.renderer.renderTexture(
           this.textureCache,
@@ -486,7 +488,7 @@ proc drawDivRef*(this:DivRef, scrollX, scrollY:int)=
   # reset clipping
   discard sdl.setRenderClipRect(this.window.renderer, nil)
 
-  this.redrawFlag = 0
+  this.redrawFlag = rkNoRedraw
 
 #........................................................
 
@@ -549,7 +551,7 @@ proc newDiv*(parent: DivRef,
   (result.w_unit, result.w_value) = parseSizeStr(width)
   (result.h_unit, result.h_value) = parseSizeStr(height)
   #result.recalc = recalcFun
-  result.redrawFlag = 1
+  result.redrawFlag = rkFullRedraw
   result.isRecalculated = false
 
 
@@ -770,7 +772,7 @@ proc newRoot*(
   result.y2 = ch - 1
 
   result.draw = drawDivRef
-  result.redrawFlag = 1
+  result.redrawFlag = rkFullRedraw
   result.isRecalculated = false
 
   result.inlineStyle = newStyleSheet()
@@ -872,17 +874,34 @@ proc newWindow*(pgui:Pgui,
 #======================================
 #*  DRAW DOM
 #====================================== 
-proc drawDOMImpl(pgui:Pgui, this:DivRef, scrollX, scrollY:int)=
-  ## draw the tree, carrying the accumulated scroll offsets of the
-  ## scrollable ancestors down to every element.
+proc drawDOMImpl(pgui:Pgui, this:DivRef, scrollX, scrollY:int, ancestorClip: sdl.Rect)=
+  ## draw the tree, carrying the accumulated scroll offsets of the scrollable
+  ## ancestors and the running on-screen clip down to every element.
+  ## `ancestorClip` is the intersection of all ancestors' on-screen rects,
+  ## computed top-down so no element needs an upward walk (see visibleClipRect).
+  this.clipRect = ancestorClip
   if this.draw != nil: this.draw(this, scrollX, scrollY)
+  #if this.redrawFlag > rkNoRedraw and this.draw != nil: this.draw(this, scrollX, scrollY)
+
+  # children are additionally clipped to this element's own on-screen rect
+  let thisScreenX = (this.x1 - scrollX).cint
+  let thisScreenY = (this.y1 - scrollY).cint
+  let childLeft = max(ancestorClip.x, thisScreenX)
+  let childTop = max(ancestorClip.y, thisScreenY)
+  let childRight = min(ancestorClip.x + ancestorClip.w, thisScreenX + this.w.cint)
+  let childBottom = min(ancestorClip.y + ancestorClip.h, thisScreenY + this.h.cint)
+  var childClip = sdl.Rect(
+    x: childLeft,
+    y: childTop,
+    w: max(0.cint, childRight - childLeft),
+    h: max(0.cint, childBottom - childTop))
 
   # this's own children are shifted by this's scroll, if this is scrollable
   let nX = scrollX + (if this.scrollable: this.scrollX else: 0)
   let nY = scrollY + (if this.scrollable: this.scrollY else: 0)
   for layer in this.layers:
     for elem in layer.elems:
-      drawDOMImpl(pgui, elem, nX, nY)
+      drawDOMImpl(pgui, elem, nX, nY, childClip)
 
   # the scrollbar overlay sits in the owner's frame (its own scroll NOT applied)
   if this.scrollable and this.scrollbar != nil:
@@ -892,8 +911,10 @@ proc drawDOM*(pgui:Pgui, this:DivRef)=
   ## draw a tree (or subtree) from its root.
   ## the first call seeds the offset with the element's own scrollable
   ## ancestors, so it can be called with any element, not just the root.
+  ## The clip is computed once here; descendants inherit it as a running value.
   let off = scrollOffset(this)
-  drawDOMImpl(pgui, this, off.x, off.y)
+  let rootClip = visibleClipRect(this, off.x, off.y)
+  drawDOMImpl(pgui, this, off.x, off.y, rootClip)
 
 proc drawWindows*(pgui:Pgui)=
   ## redraw and present only the windows flagged dirty.
@@ -931,10 +952,21 @@ template recalcDOM*(win:PgWindow)=
 #TODO: template recalcDOM*(pgui:Pgui)=
 
 
+proc markRedraw*(this: DivRef, kind: RedrawKind) =
+  ## Requests a redraw of `this`. Two different pending requests on an already
+  ## dirty element escalate to rkFullRedraw, so a full rebuild is never weakened
+  ## by a later partial request and a partial update is upgraded when needed.
+  if this == nil or kind == rkNoRedraw:
+    return
+  if this.redrawFlag == rkNoRedraw:
+    this.redrawFlag = kind
+  elif this.redrawFlag != kind:
+    this.redrawFlag = rkFullRedraw
+
 proc refreshTextureCache*(rootElem: DivRef)=
   for layer in rootElem.layers:
     for elem in layer.elems:
-      elem.redrawFlag = 1
+      elem.redrawFlag = rkFullRedraw
 
 
 
@@ -1152,7 +1184,7 @@ proc trigger*(elems:seq[DivRef], evtname:string ):bool=
 proc addTimedEvent*(pgui: Pgui,
                     elem: DivRef,
                     intervalNs: int64,
-                    fun: proc(this: DivRef),
+                    fun: proc(this: DivRef, nowNs: int64),
                     repeat: bool = true) =
   ## Registers a main-thread callback for an element.
   ## intervalNs is the interval in nanoseconds.
@@ -1171,7 +1203,7 @@ proc addTimedEvent*(pgui: Pgui,
 
 proc removeTimedEvent*(pgui: Pgui,
                        elem: DivRef,
-                       fun: proc(this: DivRef)) =
+                       fun: proc(this: DivRef, nowNs: int64)) =
   if pgui == nil:
     return
   var i = pgui.guiTimedEvents.high
@@ -1202,12 +1234,13 @@ proc clearTimedEventsRecursive(pgui: Pgui, elem: DivRef) =
       clearTimedEventsRecursive(pgui, child)
 
 
-proc runTimedEvents*(pgui: Pgui) =
+proc runTimedEvents*(pgui: Pgui, nowNs: int64) =
   ## Runs due callbacks on the thread that owns the GUI.
+  ## nowNs is the frame timestamp in nanoseconds, supplied by the caller so
+  ## the run loop does not need an extra getMonoTime() call.
   if pgui == nil:
     return
 
-  let nowNs = getMonoTime().ticks
   var i = 0
   while i < pgui.guiTimedEvents.len:
     let event = pgui.guiTimedEvents[i]
@@ -1221,9 +1254,10 @@ proc runTimedEvents*(pgui: Pgui) =
     else:
       pgui.guiTimedEvents.delete(i)
 
-    event.fun(event.elem)
+    event.fun(event.elem, nowNs)
 
-    # a callback may have changed the tree; repaint its window
+    #! a callback may have changed the tree;
+    #! repaint its window in --= MAIN LOOP =--
     if event.elem != nil and event.elem.window != nil:
       event.elem.window.redrawFlag = true
 

@@ -83,17 +83,17 @@ gui.rootElem.recalcDOM()
 
 var done:bool=false
 while not done:
-  let startTime = getMonoTime() # FPS capping
+  let nowNs = getMonoTime().ticks # FPS capping
 
   done = gui.hid_events()
-  gui.runTimedEvents()
+  gui.runTimedEvents(nowNs)
 
   gui.drawDom(gui.rootElem)
   discard gui.renderer.present()
 
   # FPS capping
-  let endTime = getMonoTime()
-  var elapsedTime = endTime.ticks - startTime.ticks
+  let endNs = getMonoTime().ticks
+  var elapsedTime = endNs - nowNs
   #echo elapsedTime 
   elapsedTime = elapsedTime div 1_000_000 # ns to ms convert
   #echo elapsedTime 

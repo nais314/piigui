@@ -36,7 +36,7 @@ let blinkBtn = gui.rootElem.newDosBtn(
   styles = ["blinkBtn"],
   text = "BLINK")
 
-proc blink(this: DivRef) =
+proc blink(this: DivRef, nowNs: int64) =
   if this.activeStyle == "default":
     this.setActiveStyle("blink")
   else:
@@ -48,16 +48,16 @@ gui.addTimedEvent(blinkBtn, 500_000_000, blink)
 
 var done = false
 while not done:
-  let smtick = getMonoTime()
+  let nowNs = getMonoTime().ticks
 
   done = gui.hid_events()
-  gui.runTimedEvents()
+  gui.runTimedEvents(nowNs)
 
   gui.drawDom(gui.rootElem)
   discard gui.renderer.present()
 
-  let emtick = getMonoTime()
-  let st = (emtick.ticks - smtick.ticks) div 1_000_000
+  let endNs = getMonoTime().ticks
+  let st = (endNs - nowNs) div 1_000_000
   sleep(max(0, 16 - st.int))
 
 closeGui(gui)

@@ -12,6 +12,9 @@
 
 - piigui.nim
   - recalcDOM*(pgui:Pgui)=
+  - runTimedEvents marks the owning window dirty for every callback, even when
+    the callback changed nothing. There is no per-event "did I change?" signal,
+    so e.g. a cursor blink recomposites and presents the whole window each tick.
 
 - styles
   - pseudostyles helper functions/templates like .focus

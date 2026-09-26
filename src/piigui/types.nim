@@ -97,6 +97,15 @@ type
     posRelative,
     posAbsolute,
     posFixed
+
+  RedrawKind* = enum
+    ## element redraw request. Merging two different requests on an already
+    ## dirty element escalates to rkFullRedraw (see `markRedraw`).
+    rkNoRedraw,         ## clean: cached texture is fine
+    rkFullRedraw,       ## rebuild textureCache then blit
+    rkRecalcClipping,   ## reserved for future cached-clip work
+    rkBlitTextureCache, ## blit cached texture only
+    rkPartialRedraw     ## widget-specific cheap update (e.g. cursor blink)
   #.......................................
   
   #sdl.Color* = ref sdl.Color # can test for nil
@@ -208,7 +217,8 @@ type
     #recalc*: proc(this:DivRef):tuple[w,h:int] # flex, absolute, free, fixed
     x1*,x2*,y1*,y2*: int
 
-    redrawFlag*:int # changed? needs redraw? what to redraw?
+    redrawFlag*:RedrawKind # changed? needs redraw? what to redraw?
+    clipRect*: sdl.Rect #* on-screen clip, set top-down by drawDOMImpl each frame
     draw*:proc(this:DivRef, scrollX, scrollY:int)
 
     styles*: StyleSheetSeq # sequence of styles "cascading style sheet"
@@ -254,7 +264,7 @@ type
     intervalNs*: int64
     nextFireNs*: int64
     repeat*: bool
-    fun*: proc(this: DivRef)
+    fun*: proc(this: DivRef, nowNs: int64)
 
 
 

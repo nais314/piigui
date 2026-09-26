@@ -88,7 +88,7 @@ proc newMonoTextBox*(parent: DivRef,
   # todo move to back if style not adds it
   (result.w_unit, result.w_value) = parseSizeStr(width)
   (result.h_unit, result.h_value) = parseSizeStr(height)
-  result.redrawFlag = 1
+  result.redrawFlag = rkFullRedraw
   result.isRecalculated = false
 
   result.inlineStyle = newStyleSheet()
@@ -139,7 +139,7 @@ proc `value=`*(this: TextBox, val:string)=
   withLock this.lock:
     this.val = val
     this.cursorPos = val.runeLen
-  this.redrawFlag = 1
+  this.redrawFlag = rkFullRedraw
 
 
 proc value*(this: TextBox):string= this.val
@@ -147,20 +147,38 @@ proc value*(this: TextBox):string= this.val
 
 #----------------------------------------------------
 
+proc cursorTimedEvent*(this: DivRef, nowNs: int64)=
+  let self = MonoTextBox(this)
+  #let elapsed = nowNs - self.lastDrawTick
+  if nowNs - self.lastDrawTick > 500_000_000'i64:
+    self.drawCursor = not self.drawCursor
+    self.lastDrawTick = nowNs
+    # only the cursor changed; the widget's draw picks the cached cursor
+    # texture. markRedraw escalates to a full redraw if another request is
+    # already pending on this element.
+    self.markRedraw(rkPartialRedraw)
 
 proc onFocus(this:DivRef){.nosinks.}=
   when debug > 0: echo "[ MonoText Focusing ]"
   piigui.default_onFocus(this)
   if this.window != nil:
     discard sdl.startTextInput(this.window.window)
-  this.redrawFlag = 1
+  this.redrawFlag = rkFullRedraw
 
   MonoTextBox(this).drawCursor = true
   MonoTextBox(this).lastDrawTick = getMonoTime().ticks
 
+  this.pgui.addTimedEvent(
+    elem = this,
+    intervalNs = 500_000000.int64,
+    fun = cursorTimedEvent,
+    repeat = true
+    )
+
 proc onBlur(this:DivRef){.nosinks.}=
   if this.window != nil:
     discard sdl.stopTextInput(this.window.window)
+  MonoTextBox(this).pgui.removeTimedEvent(this, cursorTimedEvent)
 
 proc onMouseButtonUp(this:DivRef)=
   onFocus(this)
@@ -169,7 +187,7 @@ proc onMouseButtonUp(this:DivRef)=
 proc onTextInput(this: DivRef, val:string){.nosinks.}=
       #[ this.val &= val
       this.cursorPos += 1 # = val.runeLen.uint
-      this.redrawFlag = 1 ]#
+      this.redrawFlag = rkFullRedraw ]#
       let self = TextBox(this)
       if self.cursorPos == 0:
         # add text Before
@@ -183,7 +201,7 @@ proc onTextInput(this: DivRef, val:string){.nosinks.}=
                     val &
                     self.val.runeSubStr(self.cursorPos)
       self.cursorPos += val.len
-      self.redrawFlag = 1
+      self.redrawFlag = rkFullRedraw
 
 
 
@@ -222,7 +240,7 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
     # ancestors' on-screen rects. It must clip ONLY the final on-screen copy,
     # not the texture-local rendering below.
     #* SCREEN CORDINATES
-    var clipRect = visibleClipRect(this, scrollXArg, scrollYArg)
+    var clipRect = this.clipRect
     if clipRect.w == 0 or clipRect.h == 0:
       #! off-screen: skip render; redrawFlag stays set so it repaints when visible again
       return
@@ -254,15 +272,15 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
 
 
     # we need to redraw, even if not changed
-    if this.redrawFlag == 0 and this.textureCache != nil and this.textureCacheWithCursor != nil:
+    if this.redrawFlag != rkFullRedraw and this.textureCache != nil and this.textureCacheWithCursor != nil:
         discard sdl.setRenderClipRect(this.window.renderer, clipRect.addr)
 
         if this.pgui.focusElem == this:
           # draw cursor
-          let elapsedTicks = getMonoTime().ticks - this.lastDrawTick
+#[           let elapsedTicks = getMonoTime().ticks - this.lastDrawTick
           if elapsedTicks > 500_000_000.int64: # nanoseconds
             this.drawCursor = not this.drawCursor
-            this.lastDrawTick = getMonoTime().ticks
+            this.lastDrawTick = getMonoTime().ticks ]#
 
           if this.drawCursor:
             discard this.window.renderer.renderTexture(
@@ -281,7 +299,7 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
       #=============================================
     else:
       # if need to redraw, check if cache setted up
-      # todo setup cahce at recalc
+      # todo setup cache at recalc
       if this.textureCache != nil:
         sdl.destroyTexture(this.textureCache)
       this.textureCache = sdl.createTexture(
@@ -356,29 +374,32 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
 
         sdl.destroySurface(surface)
         sdl.destroyTexture(texture)
+      
+      else:
+        this.charWidth = 0
         #................................
 
 
-        # DRAW CURSOR ................................
-        # duplicate texturecache
-        this.textureCacheWithCursor = duplicateTexture(
-          this.window.renderer,
-          this.textureCache,
-          this.w.cfloat, this.h.cfloat)
+      #* DRAW CURSOR ................................
+      #* duplicate texturecache
+      this.textureCacheWithCursor = duplicateTexture(
+        this.window.renderer,
+        this.textureCache,
+        this.w.cfloat, this.h.cfloat)
 
-        discard sdl.setRenderTarget(this.window.renderer, this.textureCacheWithCursor)
+      discard sdl.setRenderTarget(this.window.renderer, this.textureCacheWithCursor)
 
-        if this.pgui.focusElem == this:
-          when debug > 0: echo "[ MonoText cursor drawing ]"
-          discard setRenderDrawColor(this.window.renderer,
-              this.styleCache[this.activeStyle].color)
+      if this.pgui.focusElem == this:
+        when debug > 0: echo "[ MonoText cursor drawing ]"
+        discard setRenderDrawColor(this.window.renderer,
+            this.styleCache[this.activeStyle].color)
 
-          discard this.window.renderer.renderLine(
-              (this.cursorPos * this.charWidth).cfloat,
-              canvasFRect.y,
-              (this.cursorPos * this.charWidth).cfloat,
-              canvasFRect.y + canvasFRect.h
-              )
+        discard this.window.renderer.renderLine(
+            (this.cursorPos * this.charWidth).cfloat,
+            canvasFRect.y,
+            (this.cursorPos * this.charWidth).cfloat,
+            canvasFRect.y + canvasFRect.h
+            )
 
 
       #=====================================
@@ -394,7 +415,7 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
     #* reset clipping ----------------------
     discard sdl.setRenderClipRect(this.window.renderer, nil)
 
-    this.redrawFlag = 0
+    this.redrawFlag = rkNoRedraw
 
 #........................................................
 
