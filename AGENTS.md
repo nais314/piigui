@@ -48,7 +48,7 @@ questions when the preferred solution or scope is unclear.
 
 ## Project
 
-PiiGUI is a Nim SDL2 GUI toolkit, licensed under MPL-2.0. The author is Istvan
+PiiGUI is a Nim SDL3 GUI toolkit, licensed under MPL-2.0. The author is Istvan
 Nagy. Linux with an available X11 display is the supported runtime environment.
 
 There is no README. Use `AGENTS.md` for agent workflow and `doc/` for design
@@ -77,10 +77,10 @@ licensing and project policy.
 
 - Use `/home/istvan/.choosenim/toolchains/nim-2.2.10/bin/nim`; `nim` and
   `nimble` are not on `PATH`.
-- `piigui.nimble` declares Nim 2.2.10 or newer and the SDL2 Nim package.
-- SDL2 system libraries and a display are required for GUI execution.
+- `piigui.nimble` declares Nim 2.2.10 or newer and the SDL3 Nim package.
+- SDL3 system libraries and a display are required for GUI execution.
 - `nimble.paths` is machine-specific and ignored by Git. It may provide the
-  local `src/` and SDL2 package paths; do not assume it exists on another
+  local `src/` and SDL3 package paths; do not assume it exists on another
   machine.
 - `nim.cfg` enables threads, ORC, dead-code elimination, logging, input-event
   and timed-action features. Do not enable commented experimental defines for
@@ -99,12 +99,12 @@ Run commands from the repository root with the pinned Nim executable:
 /home/istvan/.choosenim/toolchains/nim-2.2.10/bin/nim c -r tests/test_1_2.nim
 ```
 
-`tests/headless_test.nim` is the headless pure-logic sanity test. The other tests are
-interactive SDL demos: they open a window, run an event loop, and do not finish
-automatically. Run them only when an X11 display is available and state clearly
-when they could not be run.
+`tests/headless_test.nim` is for YOUR headless pure-logic sanity test.
+The other tests are interactive SDL demos: they open a window,
+run an event loop, and do not finish automatically.
+You can create your own tests too.
 
-For a compile-only check, omit `-r`. Build artifacts ending in `.out` are
+For a compile-only check, omit `-r`. Build artifacts ending in `.out` are git
 ignored. The project uses `/tmp/.nimcache` through `nim.cfg`.
 
 The default font is embedded at compile time in `src/piigui/simple.nim` from:
@@ -138,29 +138,16 @@ Keep those paths valid relative to `simple.nim`.
 - Import the recalc modules with aliases, for example
   `import piigui/layout/recalcH as recalcHMod`, because the module name can
   shadow the exported `recalcH` procedure.
-- `src/piigui/ui/` contains widgets including labels, buttons, text boxes,
+- `src/piigui/ui/` contains gui widgets including labels, buttons, text boxes,
   text areas, and scrollbars.
-- `src/piigui/ai/aiwebserver.nim` is a separate web-server stub.
-- `src/piigui/app/intercom.nim` contains application communication support.
+- `src/piigui/ai` is a AI MCP web-server. (TODO)
+- `src/piigui/app/intercom.nim` contains application communication support. (TODO)
 
 ## Behavioral Conventions
 
-- Styling is global through `rootSSRT`, keyed by element type, group, name,
-  `rootStyle`, and pseudo-style keys such as `hover` and `focus`.
-- Add a group with `rootSSRT["myGroup"] = newStyleSheet()` and create or add
-  pseudo-styles with `addNewPseudoStyle("hover")` or `addPseudoStyle(...)`.
-- Run `recalcStyle(true)` before `recalcDOM()` in demos.
-- Overflow defaults to scrolling (`ofScroll`). Overflowing containers receive
-  scrollbars automatically. Use `ofHidden` to clip and disable scrolling.
-- Read `doc/scroll_system.md` before changing scrollbar or scroll-layout code.
-- `doc/recalcflex_pipeline.md`, `doc/element_clipping.md`, and
-  `doc/piigui.nim_visibleClipRect.md` describe current layout and clipping
-  behavior.
-- `doc/style_logic.txt`, `doc/recalcflex_logic.txt`, and
-  `doc/flex_styling_aid.txt` are design notes and may be stale. Verify their
-  claims against the implementation.
 - `doc/todo.md` records the author's intended direction and unresolved ideas;
   do not treat it as an approved implementation plan.
+  You may add you own proposals to the end of it.
 
 ## Nim Coding Conventions
 
@@ -170,6 +157,7 @@ of the module being changed.
 ### File Layout (must read top-down, human-first)
 
 Order every source file as:
+
 1. Module doc comment (`##`) at the very top: the file's role in the project.
 2. Imports.
 3. `const debug = 1` and other module constants.
@@ -238,38 +226,64 @@ Rule: the top of the file must tell the story; details come later.
 
 ## Comments
 
-- Comment the reason for non-obvious logic, not merely what the code does.
-- Document sentinel values, boundary assumptions, ownership, and cleanup at
-  the point where they are declared or used.
-- Keep useful existing section banners and update comments when behavior
-  changes; do not remove explanatory comments without replacing their value.
-- Use `#!` for very important warnings, variables, procedures, and forward declarations
-  such as `#!FWD`, logic or code breaking, early returns, optimizations.
-- Use `#*` for emphasis and section markers, `#TODO:` for known improvement
-  opportunities, and `#?` for questionable code that needs review.
+- Comment the reason for non-obvious logic, not just merely what the code does.
+- Avoid redundant comments for self-explanatory statements.
+  Focus on logical blocks, important decisions, side effects, and non-obvious implementation details.
+- Write brief, human-readable comments immediately before logical blocks of code.
+  Each comment should explain what the following block does and why it is necessary.
+  Comments should be concise, ideally a single line,
+  and should allow a reader to understand the procedure's logic
+  by reading from top to bottom without having to inspect every implementation detail.  
 - Keep comments concise and human-readable. Do not add comments that merely
   restate a variable declaration or straightforward operation.
+- Document sentinel values, boundary assumptions, ownership, and cleanup at
+  the point where they are declared or used.
+- Comment the "why", not just the "what". Update comments when code changes.
+- Use `#!` for very important warnings of architectural and design choices,
+  forward declarations `#!FWD`, early returns, optimizations, tricks.
+- Use `#*` for emphasis and section markers, `#TODO:` for known improvement
+  opportunities, and `#?` for questionable code that needs review.
 - Before every non-obvious logic block: one line explaining WHY it exists.
 - After (or beside) every variable declaration: its role.
-- Use `#!` as a marker for important comments variables, procs, section tags (`#!FWD`, `#! watch out`).
-- Use `#*` as a marker for emphasis and section tags (`#* content height`, `#* importan variable`).
+- Use `#*` as a marker for emphasis and section tags.
 - Use `#TODO:` as a marker for "here is room to improve the code", "need to refactor"
 - Use `#?` to mark questionable lines or variables in the code
-- Keep existing section banner comments; do not delete them. You can add your own.
-- Comment the "why", not the "what". Update comments when code changes.
-- Document sentinel values and boundary checks at the point of use.
+- Keep useful existing section banners and update comments when behavior
+  changes; do not remove explanatory comments without replacing their value.
+  You can add new.
 - This is a banner style before large block of code, segments of code (variables block, types block, proc for some topic)
+
     ```nim
     #*=================================================
     #*           RECALCULATE STYLESSHEETS
     #*=================================================
     ```
-- This is a banner for the finalizing part of some proc
+
+- This is a banner for a common code block of some proc
+
     ```nim
     #--------------------------------------------
     # finally
     #--------------------------------------------
     ```
+
+### Significant Code Markers (#!)
+
+Use the `#!` comment marker to identify lines of code whose effects are significant beyond their immediate, local context.
+
+Mark operations that may have important, non-obvious consequences elsewhere in the program, particularly when those consequences cannot be understood by reading the surrounding code alone.
+
+Examples include:
+
+* Changing an object's state in a way that triggers expensive computation, rendering, layout recalculation, or other deferred work.
+* Modifying shared state, global variables, or objects whose effects extend beyond the current procedure.
+* Triggering or scheduling long-running operations, background tasks, callbacks, or event chains.
+* Invalidating caches, marking resources as dirty, or triggering cascading updates.
+* Changing state that affects the behavior of other components or subsystems.
+
+Place the `#!` marker immediately before the relevant statement or logical block. Briefly explain the consequential effect, especially when it is indirect, delayed, expensive, or otherwise not apparent from the local code.
+
+Do not use `#!` for ordinary implementation details, routine assignments, or code that is already self-explanatory. Reserve it for operations whose broader consequences deserve special attention during code review, maintenance, or modification.
 
 ## PERFORMANCE
 
@@ -281,7 +295,7 @@ Rule: the top of the file must tell the story; details come later.
 
 ## DEBUG TRACING
 
-- Keep a module-level `const debug = <level>`.
+- Keep a module-level or procedure level `const debug = <level>`.
 - Use `when debug > <level>:` format so debug can be switched off.
 - Level convention: `> 0` lifecycle only, `> 1` per-proc / per-line detail,
   `> 2` per-element dumps.
@@ -292,12 +306,10 @@ Rule: the top of the file must tell the story; details come later.
 
 - The implementation matches the approved file-level plan.
 - Unrelated worktree changes remain untouched.
-- Relevant source and documentation were inspected.
+- Relevant source and documentation were updated.
 - The pinned Nim compile check was run, or the reason it could not run is
   reported.
 - `tests/headless_test.nim` was run when relevant.
-- Interactive SDL tests were run only with a working display and their status
-  is reported.
 - New warnings, resource leaks, thread-safety concerns, portability blockers,
   and boundary risks were checked and reported.
-- No unrequested bug fixes, refactors, TODO changes, or commits were made.
+- No unrequested bug fixes, refactors, or commits were made.
