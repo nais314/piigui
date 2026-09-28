@@ -1,0 +1,51 @@
+{
+  "name": "nim-color-preview",
+  "displayName": "Nim Color Preview",
+  "description": "Show inline color swatches for PiiGUI-style Nim color literals (0xRRGGBBAA.HexColor, setColor(r,g,b[,a]) and friends) with native color picker support.",
+  "version": "0.0.1",
+  "publisher": "istvan",
+  "license": "MPL-2.0",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "nim",
+    "color",
+    "piigui"
+  ],
+  "main": "./out/src/extension.js",
+  "activationEvents": [
+    "onLanguage:nim"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "nim",
+        "aliases": [
+          "Nim"
+        ],
+        "extensions": [
+          ".nim"
+        ],
+        "filenames": [
+          "config.nims",
+          "nimble.paths"
+        ]
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -p ./ --watch",
+    "test": "npm run compile && node --test out/tests/",
+    "package": "npx @vscode/vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/vscode": "~1.85.0",
+    "typescript": "^5.5.0"
+  }
+}

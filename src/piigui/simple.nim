@@ -266,9 +266,9 @@ proc newSimpleGui*(
 
     result = new Pgui
 
+
     if not simpleSDLInit(result):
       quit("proc newSimpleGui: cannot initialize SDL")
-
 
 
     let newWindow = newSimpleWindow(
@@ -282,21 +282,10 @@ proc newSimpleGui*(
         rootSSRT,
         recalcFun
         ) 
-        
     if newWindow == nil: quit("cannot create window" & $sdl.getError(), QuitFailure)
 
     
     setDPIMultiplier(newWindow)
-    #[ let theNewWindow: PgWindow = result.activeWindow
-    let displayIndex = getDisplayIndex(result.activeWindow.window)
-    if getDisplayDPI(displayIndex, addr theNewWindow.ddpi, addr theNewWindow.hdpi, addr theNewWindow.vdpi) == SdlSuccess:
-      when debug > 0:
-        debugEcho "Diagonal DPI: ", theNewWindow.ddpi
-        debugEcho "Horizontal DPI: ", theNewWindow.hdpi
-        debugEcho "Vertical DPI: ", theNewWindow.vdpi
-      discard
-    else:
-      quit("Failed to get DPI: " & $getError(), QuitFailure) ]#
 
 
 proc closeGui*(pgui: Pgui) =

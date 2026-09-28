@@ -25,8 +25,6 @@ const
   DefaultWindowFlags*: sdl.WindowFlags = sdl.WindowFlags(0)
   DefaultRendererFlags*: cint = 0
 
-  EmptyColor* : sdl.Color = (r:0'u8,g:0'u8,b:0'u8,a:0'u8)
-
   # scrollbar geometry
   ScrollBarSize* = 12 # track/arrow thickness in px
   ScrollBarArrowSize* = 12
@@ -34,9 +32,12 @@ const
   ScrollBarWheelStep* = 40
   ScrollBarArrowStep* = 16
 
-  transparentColor* = sdl.Color((r:50'u8,g:50'u8,b:50'u8,a:0'u8))
-  blackColor* = sdl.Color((r:0'u8,g:0'u8,b:0'u8,a:255'u8))
-  bgColor* = sdl.Color((r:200'u8,g:200'u8,b:184'u8,a:255'u8))
+  EmptyColor* : sdl.Color = (r:0'u8,g:0'u8,b:0'u8,a:0'u8)
+
+  transparentColor* = sdl.Color((r:50'u8, g:50'u8, b:50'u8, a:0'u8))
+  blackColor* = sdl.Color((r:0'u8, g:0'u8, b:0'u8, a:255'u8))
+  bgColor* = sdl.Color((r:200'u8, g:200'u8, b:184'u8, a:255'u8))
+  whiteColor* = sdl.Color((r:255'u8, g:255'u8, b:255'u8, a:255'u8))
 #-------------------------------------------------------
 type
   HexColor* = uint32
@@ -100,12 +101,14 @@ type
 
   RedrawKind* = enum
     ## element redraw request. Merging two different requests on an already
-    ## dirty element escalates to rkFullRedraw (see `markRedraw`).
-    rkNoRedraw,         ## clean: cached texture is fine
-    rkFullRedraw,       ## rebuild textureCache then blit
-    rkRecalcClipping,   ## reserved for future cached-clip work
-    rkBlitTextureCache, ## blit cached texture only
-    rkPartialRedraw     ## widget-specific cheap update (e.g. cursor blink)
+    ## dirty element escalates to rkFullRedraw (see `setRedrawFlag`).
+    rkNoRedraw,          ## clean: cached texture is fine
+    rkScrollTexture,     ## scroll text in text input elems
+    rkCursorRedraw,      ## only redraw texture cache w cursor
+    rkPartialRedraw,     ## widget-specific cheap update
+    rkFullRedraw,        ## rebuild textureCache then blit
+    #rkRecalcClipping,   ## reserved for future cached-clip work
+    #rkBlitTextureCache, ## blit cached texture only
   #.......................................
   
   #sdl.Color* = ref sdl.Color # can test for nil
@@ -285,7 +288,15 @@ type
 
   #------------------------------------------------------
 
-  #Pgui* = AppObj
+  # PGui state object and support types
+  SdlSupportsColorModKind* = enum
+    sscmUnknown,
+    sscmUnsupported,
+    sscmSupported
+
+  PguiStateObj* = object of RootObj
+    SupportsColorMod*: SdlSupportsColorModKind = sscmUnknown
+
   Pgui* = ref object of RootObj #AppBase
     #todo windows:
     #todo   window
@@ -311,6 +322,8 @@ type
 
     listeners*: ListenerList #* system wide events
     guiTimedEvents*: seq[TimedEvent]
+
+    state* : PguiStateObj
 
 
   RootElem* = ref object of DivRef

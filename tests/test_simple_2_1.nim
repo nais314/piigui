@@ -64,6 +64,13 @@ let textinput1 = content.newMonoTextBox(val="Test Text", name="textinput1", widt
 textinput1.setBackGroundColor(220,220,220,255)
 
 
+let textinput2 = content.newMonoTextBox(val="Test textinput2", name="textinput2", width="50%", height="28px")
+textinput2.setColor(50,120,255,255)
+
+let textinput3 = content.newMonoTextBox(val="Test textinput3", name="textinput2", width="50%", height="28px")
+textinput3.setColor(222,222,255,255)
+textinput3.setBackGroundColor(50,50,220,255)
+
 ###########################################################
 
 pgui.rootElem.recalcStyle(true)

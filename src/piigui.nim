@@ -952,7 +952,7 @@ template recalcDOM*(win:PgWindow)=
 #TODO: template recalcDOM*(pgui:Pgui)=
 
 
-proc markRedraw*(this: DivRef, kind: RedrawKind) =
+proc setRedrawFlag*(this: DivRef, kind: RedrawKind) =
   ## Requests a redraw of `this`. Two different pending requests on an already
   ## dirty element escalate to rkFullRedraw, so a full rebuild is never weakened
   ## by a later partial request and a partial update is upgraded when needed.
