@@ -38,31 +38,25 @@ type
 
     selectionStart*: int = 0 # if == valCursorPos: no selection
 
-    # monospace font handling
     charWidth*: int
 
     backgroundTextureCache*: TexturePtr # background+border, reused while scrolling
     textTextureCache*: TexturePtr # whole `val` rendered once, sliced on scroll
-    textTextureOffset*: cfloat # src x into textTextureCache: scrollOffset*charWidth
+    textureCacheWithCursor*: TexturePtr # textureCache plus the cursor line
+    textTextureOffset*: cfloat # src.x into textTextureCache: scrollOffset*charWidth
     textTextureW*: int
     textTextureH*: int
-    textureCacheWithCursor*: TexturePtr # textureCache plus the cursor line
 
-    lastDrawTick: int64
+    lastDrawTick: int64 # blink effect
     drawCursor: bool = false
 
   TextBox* = MonoTextBox
 
 #----------------------------------------------------
-#[ 
-##    ## ######## ##      ## 
-###   ## ##       ##  ##  ## 
-####  ## ##       ##  ##  ## 
-## ## ## ######   ##  ##  ## 
-##  #### ##       ##  ##  ## 
-##   ### ##       ##  ##  ## 
-##    ## ########  ###  ###  
- ]#
+
+#*=================================================
+#*       FORWARD DECLARATIONS FOR READBILITY
+#*=================================================
 
 proc onFocus(this:DivRef){.nosinks.} #!FWD
 proc onBlur(this:DivRef){.nosinks.} #!FWD
@@ -75,10 +69,30 @@ proc clampToMaxRunes(val: string): string #!FWD
 proc measureCharWidthIfNeeded(this: MonoTextBox) #!FWD
 proc updateCursorView(this: MonoTextBox) #!FWD
 
+#* texture-cache helpers used by draw, defined further down
+proc ensureTextureTargets(this: MonoTextBox): bool #!FWD
+proc renderBackgroundCache(this: MonoTextBox) #!FWD
+proc renderTextTexture(this: MonoTextBox): bool #!FWD
+proc composeTextureCache(this: MonoTextBox) #!FWD
+proc composeCursorTexture(this: MonoTextBox) #!FWD
+
 proc draw*(self:DivRef, scrollXArg, scrollYArg:int) #!FWD
 
 
 
+
+
+
+
+#[ 
+##    ## ######## ##      ## 
+###   ## ##       ##  ##  ## 
+####  ## ##       ##  ##  ## 
+## ## ## ######   ##  ##  ## 
+##  #### ##       ##  ##  ## 
+##   ### ##       ##  ##  ## 
+##    ## ########  ###  ###  
+ ]#
 proc newMonoTextBox*(parent: DivRef,
               val: string="",
               layer: int = 0,
@@ -153,6 +167,129 @@ proc newMonoTextBox*(parent: DivRef,
     echo ""
 
 #----------------------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+#[ 
+########  ########     ###    ##      ## 
+##     ## ##     ##   ## ##   ##  ##  ## 
+##     ## ##     ##  ##   ##  ##  ##  ## 
+##     ## ########  ##     ## ##  ##  ## 
+##     ## ##   ##   ######### ##  ##  ## 
+##     ## ##    ##  ##     ## ##  ##  ## 
+########  ##     ## ##     ##  ###  ###  
+ ]#
+
+
+proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
+  ## Paints from the texture caches. Full redraws rebuild background and text;
+  ## scrolling only recomposes the visible slice, cursor moves only the
+  ## cursor texture, and blink blits whichever cursor texture is current.
+  withLock self.lock:
+    let this = MonoTextBox(self)
+
+    #.............................
+    # clipRect (screen coordinates) hides overflow: the intersection of all
+    # ancestors' on-screen rects. It must clip ONLY the final on-screen copy,
+    # not the texture-local rendering below.
+    #* SCREEN CORDINATES
+    var clipRect = this.clipRect
+    if clipRect.w == 0 or clipRect.h == 0:
+      #! off-screen: skip render; redrawFlag stays set so it repaints when visible again
+      return
+    #.............................
+
+    # The area of this button on the screen, shifted by the accumulated scroll
+    # offsets of its ancestors.
+    #* SCREEN CORDINATES
+    var screenFRect = sdl.FRect(
+      x: (this.x1 - scrollXArg).cfloat,
+      y: (this.y1 - scrollYArg).cfloat,
+      w: this.w.cfloat,
+      h: this.h.cfloat)
+    #.............................
+
+    this.measureCharWidthIfNeeded()
+    this.updateCursorView()
+
+    let needsFullRebuild =
+      this.redrawFlag == rkFullRedraw or
+      this.textureCache == nil or
+      this.backgroundTextureCache == nil or
+      this.textureCacheWithCursor == nil
+
+    #*--------------------------------------------
+    #*          ---== REDRAWING ==---
+    #*--------------------------------------------
+    if needsFullRebuild:
+      if not this.ensureTextureTargets():
+        #! SDL could not create the targets; keep redrawFlag set and retry
+        return
+
+      #* draw the background
+      this.renderBackgroundCache()
+
+      if not this.renderTextTexture():
+        #* font render failed: release the target, keep redrawFlag set
+        discard sdl.setRenderTarget(this.window.renderer, nil)
+        return
+
+      #* charWidth may have been re-derived from the rendered surface
+      this.updateCursorView()
+      this.composeTextureCache()
+      this.composeCursorTexture()
+
+    else:
+      #* partial redraws: rebuild only what the flag says changed
+      case this.redrawFlag
+      of rkScrollTexture:
+        this.composeTextureCache()
+        this.composeCursorTexture()
+      of rkCursorRedraw:
+        this.composeCursorTexture()
+      else:
+        discard # rkPartialRedraw / rkNoRedraw: cached textures are current
+
+    #*--------------------------------------------
+    #* blit the current cache to the window
+    #*--------------------------------------------
+    discard sdl.setRenderTarget(this.window.renderer, nil)
+    discard sdl.setRenderClipRect(this.window.renderer, clipRect.addr)
+
+    #*--------------------------------------------
+    #* blink the cursor :)
+    #*--------------------------------------------
+    #* pick the texture that matches the current blink phase
+    let blitTexture =
+      if this.pgui.focusElem == this and this.drawCursor:
+        this.textureCacheWithCursor
+      else:
+        this.textureCache
+
+    if blitTexture != nil:
+      discard this.window.renderer.renderTexture(
+          blitTexture,
+          nil, addr screenFRect)
+
+    #* reset clipping ----------------------
+    discard sdl.setRenderClipRect(this.window.renderer, nil)
+
+    this.redrawFlag = rkNoRedraw
+
+
+
+
+
+
+
 #[
 
 ########  ########   #######   ######  
@@ -217,6 +354,18 @@ proc insertText*(this: TextBox, text: string) =
 
 
 
+
+
+######## #### ##     ## ######## ########   ######  
+   ##     ##  ###   ### ##       ##     ## ##    ## 
+   ##     ##  #### #### ##       ##     ## ##       
+   ##     ##  ## ### ## ######   ########   ######  
+   ##     ##  ##     ## ##       ##   ##         ## 
+   ##     ##  ##     ## ##       ##    ##  ##    ## 
+   ##    #### ##     ## ######## ##     ##  ######  
+
+
+
 proc cursorTimedEvent*(this: DivRef, nowNs: int64)=
   let self = MonoTextBox(this)
   #let elapsed = nowNs - self.lastDrawTick
@@ -233,6 +382,24 @@ proc cursorTimedEvent*(this: DivRef, nowNs: int64)=
 
 
 
+
+
+######## ##     ## ######## ##    ## ########                               
+##       ##     ## ##       ###   ##    ##                                  
+##       ##     ## ##       ####  ##    ##                                  
+######   ##     ## ######   ## ## ##    ##                                  
+##        ##   ##  ##       ##  ####    ##                                  
+##         ## ##   ##       ##   ###    ##                                  
+########    ###    ######## ##    ##    ##                                  
+                                                                            
+                                                                            
+##     ##    ###    ##    ## ########  ##       ######## ########   ######  
+##     ##   ## ##   ###   ## ##     ## ##       ##       ##     ## ##    ## 
+##     ##  ##   ##  ####  ## ##     ## ##       ##       ##     ## ##       
+######### ##     ## ## ## ## ##     ## ##       ######   ########   ######  
+##     ## ######### ##  #### ##     ## ##       ##       ##   ##         ## 
+##     ## ##     ## ##   ### ##     ## ##       ##       ##    ##  ##    ## 
+##     ## ##     ## ##    ## ########  ######## ######## ##     ##  ######  
 
 
 
@@ -399,6 +566,14 @@ proc keyDownEventListener(self:DivRef, e:sdl.Event):bool {.nosinks.}=
 
 
 
+##     ## ######## ##       ########  
+##     ## ##       ##       ##     ## 
+##     ## ##       ##       ##     ## 
+######### ######   ##       ########  
+##     ## ##       ##       ##        
+##     ## ##       ##       ##        
+##     ## ######## ######## ##        
+
 
 #*=================================================
 #*              CURSOR / VIEW HELPERS
@@ -469,16 +644,20 @@ proc createTargetTexture(this: MonoTextBox): TexturePtr =
   if result != nil:
     discard result.setTextureBlendMode(sdl.BLENDMODE_BLEND)
 
-proc ensureTextureTargets(this: MonoTextBox) =
+proc ensureTextureTargets(this: MonoTextBox): bool =
   ## (Re)creates the three render targets when missing or after a resize.
   ## Destroying the old textures first keeps resizing leak-free.
+  ## Returns false when SDL could not create the targets, so the caller keeps
+  ## the redraw request and retries on the next frame.
   var currentW, currentH: cfloat
   let hasValidTargets =
     this.textureCache != nil and
+    this.backgroundTextureCache != nil and
+    this.textureCacheWithCursor != nil and
     sdl.getTextureSize(this.textureCache, currentW, currentH) and
     currentW.int == this.w and currentH.int == this.h
   if hasValidTargets:
-    return
+    return true
 
   destroyCachedTexture(this.textureCache)
   destroyCachedTexture(this.backgroundTextureCache)
@@ -487,6 +666,10 @@ proc ensureTextureTargets(this: MonoTextBox) =
   this.textureCache = this.createTargetTexture()
   this.backgroundTextureCache = this.createTargetTexture()
   this.textureCacheWithCursor = this.createTargetTexture()
+
+  result = this.textureCache != nil and
+           this.backgroundTextureCache != nil and
+           this.textureCacheWithCursor != nil
 
 proc renderBackgroundCache(this: MonoTextBox) =
   ## Renders background+border exactly once; the result is reused verbatim
@@ -638,114 +821,9 @@ proc composeCursorTexture(this: MonoTextBox) =
         this.h.cfloat)
 
 #----------------------------------------------------
-#[ 
-########  ########     ###    ##      ## 
-##     ## ##     ##   ## ##   ##  ##  ## 
-##     ## ##     ##  ##   ##  ##  ##  ## 
-##     ## ########  ##     ## ##  ##  ## 
-##     ## ##   ##   ######### ##  ##  ## 
-##     ## ##    ##  ##     ## ##  ##  ## 
-########  ##     ## ##     ##  ###  ###  
- ]#
 
 
-proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
-  ## Paints from the texture caches. Full redraws rebuild background and text;
-  ## scrolling only recomposes the visible slice, cursor moves only the
-  ## cursor texture, and blink blits whichever cursor texture is current.
-  withLock self.lock:
-    let this = MonoTextBox(self)
 
-    #.............................
-    # clipRect (screen coordinates) hides overflow: the intersection of all
-    # ancestors' on-screen rects. It must clip ONLY the final on-screen copy,
-    # not the texture-local rendering below.
-    #* SCREEN CORDINATES
-    var clipRect = this.clipRect
-    if clipRect.w == 0 or clipRect.h == 0:
-      #! off-screen: skip render; redrawFlag stays set so it repaints when visible again
-      return
-    #.............................
-
-    # The area of this button on the screen, shifted by the accumulated scroll
-    # offsets of its ancestors.
-    #* SCREEN CORDINATES
-    var screenFRect = sdl.FRect(
-      x: (this.x1 - scrollXArg).cfloat,
-      y: (this.y1 - scrollYArg).cfloat,
-      w: this.w.cfloat,
-      h: this.h.cfloat)
-    #.............................
-
-    this.measureCharWidthIfNeeded()
-    this.updateCursorView()
-
-    let needsFullRebuild =
-      this.redrawFlag == rkFullRedraw or
-      this.textureCache == nil or
-      this.backgroundTextureCache == nil or
-      this.textureCacheWithCursor == nil
-
-    #*--------------------------------------------
-    #*          ---== REDRAWING ==---
-    #*--------------------------------------------
-    if needsFullRebuild:
-      this.ensureTextureTargets()
-      if this.textureCache == nil or this.backgroundTextureCache == nil or
-         this.textureCacheWithCursor == nil:
-        #! SDL could not create the targets; keep redrawFlag set and retry
-        return
-
-      this.renderBackgroundCache()
-
-      if not this.renderTextTexture():
-        #* font render failed: release the target, keep redrawFlag set
-        discard sdl.setRenderTarget(this.window.renderer, nil)
-        return
-
-      #* charWidth may have been re-derived from the rendered surface
-      this.updateCursorView()
-      this.composeTextureCache()
-      this.composeCursorTexture()
-
-    else:
-      #* partial redraws: rebuild only what the flag says changed
-      case this.redrawFlag
-      of rkScrollTexture:
-        this.composeTextureCache()
-        this.composeCursorTexture()
-      of rkCursorRedraw:
-        this.composeCursorTexture()
-      else:
-        discard # rkPartialRedraw / rkNoRedraw: cached textures are current
-
-    #*--------------------------------------------
-    #* blit the current cache to the window
-    #*--------------------------------------------
-    discard sdl.setRenderTarget(this.window.renderer, nil)
-    discard sdl.setRenderClipRect(this.window.renderer, clipRect.addr)
-
-    #* pick the texture that matches the current blink phase
-    let blitTexture =
-      if this.pgui.focusElem == this and this.drawCursor:
-        this.textureCacheWithCursor
-      else:
-        this.textureCache
-
-    if blitTexture != nil:
-      discard this.window.renderer.renderTexture(
-          blitTexture,
-          nil, addr screenFRect)
-
-    #* reset clipping ----------------------
-    discard sdl.setRenderClipRect(this.window.renderer, nil)
-
-    this.redrawFlag = rkNoRedraw
-
-#........................................................
-
-#[ 
-Textbox
-onclick:
-
- ]#
+#==========================================================
+# THE END
+#==========================================================
