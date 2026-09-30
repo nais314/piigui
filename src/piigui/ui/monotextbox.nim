@@ -609,7 +609,7 @@ proc updateCursorView(this: MonoTextBox) =
     this.textTextureOffset = 0.0
     return
 
-  this.maxScreenCursorPos = this.w div this.charWidth
+  this.maxScreenCursorPos = this.w div this.charWidth #TODO this.w - ( bordersize + padding )
   this.valCursorPos = clamp(this.valCursorPos, 0, this.valRuneLen)
   let maxScrollOffset = max(0, this.valRuneLen - this.maxScreenCursorPos)
 
@@ -697,7 +697,7 @@ proc renderBackgroundCache(this: MonoTextBox) =
   if this.styleCache[this.activeStyle].borderColor != EmptyColor:
     discard setRenderDrawColor(this.window.renderer,
       this.styleCache[this.activeStyle].borderColor)
-    discard this.window.renderer.renderRect(addr(canvasFRect))
+    discard this.window.renderer.renderRect(addr(canvasFRect)) #TODO bordersize loop, var borderFRect, 
 
 proc renderTextTexture(this: MonoTextBox): bool =
   ## Renders the whole `val` once into `textTextureCache`; scrolling later
@@ -822,7 +822,9 @@ proc composeCursorTexture(this: MonoTextBox) =
 
 #----------------------------------------------------
 
-
+proc updateSelection*(self:MonoTextBox, e: sdl.Event)=
+  let this = self
+  
 
 #==========================================================
 # THE END
