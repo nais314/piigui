@@ -1012,12 +1012,14 @@ proc getElementAtCoord*(root: DivRef, x,y:int): DivRef =
   ## search from top to bottom
   ## x,y are screen coords; the scroll offsets of scrollable
   ## ancestors are added so scrolled content is hit correctly.
-  
-  #* fast path: still inside current hover?
-  if root.pgui.hoverElem != nil and
-    x >= root.pgui.hoverElem.x1 and x <= root.pgui.hoverElem.x2 and
-    y >= root.pgui.hoverElem.y1 and y <= root.pgui.hoverElem.y2:
-    return root.pgui.hoverElem  # O(1), no tree walk
+  ##
+  ## #! do NOT add a "is the point still inside pgui.hoverElem" fast path here.
+  ## #! hoverElem is usually an ancestor container, so its bounding rect also
+  ## #! contains its children: returning it early would hand mouse-down/up to
+  ## #! the container instead of the child button, making clicks land on the
+  ## #! wrong element (the "click works only on the second try" bug). It also
+  ## #! ignored scroll offsets, layer z-order, scrollbar overlays, and could
+  ## #! return an element from another window.
 
   proc sub_getElemRecursive(elem: DivRef, accScrollX, accScrollY: int): DivRef =
     # elem and its children are clipped to elem's on-screen rect,

@@ -110,6 +110,7 @@ Rule: the top of the file must tell the story; details come later.
   banners and update comments when behavior changes.
 - Debug output must be gated by the module's existing debug convention. Do not
   add noisy unconditional tracing to hot paths.
+- prefer `object.property.procName()` calling instead of `procName(object.property)`.
 
 ## NAMING
 

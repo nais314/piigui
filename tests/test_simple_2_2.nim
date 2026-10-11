@@ -11,6 +11,9 @@ import piigui/[types, style, simple, hidevents]
 
 import piigui/ui/[dosbtn, monotextbox]
 
+#* 2 = quiet, 3 = per-element click/focus/hover traces
+const debug = 2
+
 ###########################################################
 #* random valid runes for the boundary checks
 ###########################################################
@@ -104,6 +107,19 @@ textinput5.setBackGroundColor(220,220,220,255)
 
 let textinput6 = content.newMonoTextBox(val="", name="textinput6", width="50%", height="28px")
 textinput6.setBackGroundColor(230,230,230,255)
+
+#* diagnostics: echo each textbox click together with the live focus/hover
+#* pointers so the hidevents state machine is visible without touching widgets
+when debug > 2:
+  proc traceTextboxClick(this:DivRef, e:sdl.Event):bool=
+    echo "[test_simple_2_2] click on ",
+      (if this == nil: "nil" else: this.name),
+      " focus=", (if pgui.focusElem == nil: "nil" else: pgui.focusElem.name),
+      " hover=", (if pgui.hoverElem == nil: "nil" else: pgui.hoverElem.name)
+    return false
+  for tb in [DivRef(textinput1), DivRef(textinput2), DivRef(textinput3),
+             DivRef(textinput4), DivRef(textinput5), DivRef(textinput6)]:
+    tb.addEventListener("click", traceTextboxClick)
 
 #*=============================================
 #* MaxValRunes boundary checks (random runes)

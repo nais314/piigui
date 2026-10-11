@@ -120,6 +120,8 @@ proc newNineBtn*(parent: DivRef,
 proc ninebtn_onDown(this:DivRef){.nosinks.}=
   ## pressed visual: switch to the :active pseudo-style when it exists,
   ## otherwise draw() inverts the style background (state == 1)
+  when debug > 2:
+    echo "ninebtn_onDown ", this.name, " activeStyle=", this.activeStyle
   NineBtn(this).state = 1
   this.setActiveStyle("active")
   this.redrawFlag = rkFullRedraw
@@ -128,6 +130,9 @@ proc ninebtn_onUp(this:DivRef){.nosinks.}=
   ## release visual: return to the element's base style (default today,
   ## RED/YELLOW/... later). Do not restore :hover here: a click makes this the
   ## pgui.focusElem and a stale hover style would linger until the next motion.
+  when debug > 2:
+    echo "ninebtn_onUp ", this.name, " activeStyle=", this.activeStyle,
+      " mouseSource=", (if this.pgui.mouseSource == nil: "nil" else: this.pgui.mouseSource.name)
   NineBtn(this).state = 0
   this.restoreActiveStyle()
   this.redrawFlag = rkFullRedraw
@@ -136,15 +141,22 @@ proc ninebtn_onFocus(this:DivRef){.nosinks.}=
   ## keyboard focus only. The mouse-up path also calls onFocus, but keeps
   ## pgui.mouseSource set for the duration, so ignore that call to avoid
   ## leaving a clicked button stuck in the pressed visual.
+  when debug > 2:
+    echo "ninebtn_onFocus ", this.name, " mouseSource=",
+      (if this.pgui.mouseSource == nil: "nil" else: this.pgui.mouseSource.name)
   if this.pgui.mouseSource == nil:
     ninebtn_onDown(this)
 
 proc ninebtn_onBlur(this:DivRef){.nosinks.}=
   ## focus lost: reset the pressed visual; never triggers a click
+  when debug > 2:
+    echo "ninebtn_onBlur ", this.name, " state=", NineBtn(this).state
   ninebtn_onUp(this)
 
 proc ninebtn_onDragEnd(this:DivRef){.nosinks.}=
   ## released over another element: restore style and clear the pressed state
+  when debug > 2:
+    echo "ninebtn_onDragEnd ", this.name, " state=", NineBtn(this).state
   piigui.default_onDragEnd(this)
   NineBtn(this).state = 0
   this.redrawFlag = rkFullRedraw

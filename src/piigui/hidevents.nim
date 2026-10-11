@@ -19,16 +19,21 @@ import piigui/[types,style]
 
 import tables
 
+#* module-wide debug level: 0 off, 1 lifecycle, 2 mouse flow, 3 per-element dumps.
+#* Raise this (e.g. to 3) to trace the hover/focus/click state machine below.
+const debug = 0
+
 
 #!FWD
 proc markWindowDirty(pgui:Pgui, windowID:uint32) #!FWD
 proc markElemWindowDirty(elem:DivRef) #!FWD
+when debug > 2:
+  proc elemName(e:DivRef): string #!FWD
 
 
 # Event handling
 # Return true on pgui shutdown request, otherwise return false
 proc hid_events*(pgui:Pgui): bool = # exit pgui on true
-  const debug = 0
   result = false
   var e: sdl.Event
 
@@ -97,6 +102,12 @@ proc hid_events*(pgui:Pgui): bool = # exit pgui on true
         mx,
         my)
 
+      when debug > 2:
+        echo "hid_events MOTION: target=", elemName(eventTarget),
+          " hover=", elemName(pgui.hoverElem),
+          " mouseSource=", elemName(pgui.mouseSource),
+          " focus=", elemName(pgui.focusElem)
+
       if eventTarget != nil:
         pgui.currentWindowId = windowID
         let previousHover = pgui.hoverElem
@@ -148,6 +159,11 @@ proc hid_events*(pgui:Pgui): bool = # exit pgui on true
       let eventTarget = getElementAtCoord(
             pgui.windows[ windowID ].rootElem,
             mx, my)
+
+      when debug > 2:
+        echo "hid_events DOWN: target=", elemName(eventTarget),
+          " focus=", elemName(pgui.focusElem)
+
       if eventTarget != nil:
         markElemWindowDirty(eventTarget)
         pgui.mouseSource = eventTarget
@@ -164,7 +180,12 @@ proc hid_events*(pgui:Pgui): bool = # exit pgui on true
       let eventTarget = getElementAtCoord(
             pgui.windows[windowID].rootElem,
             mx, my)
-      
+
+      when debug > 2:
+        echo "hid_events UP: target=", elemName(eventTarget),
+          " mouseSource=", elemName(pgui.mouseSource),
+          " focus=", elemName(pgui.focusElem)
+
       if eventTarget != nil:
         markElemWindowDirty(eventTarget)
         # Default
@@ -182,6 +203,9 @@ proc hid_events*(pgui:Pgui): bool = # exit pgui on true
                 eventTarget.onFocus(eventTarget)
             eventTarget.pgui.focusElem = eventTarget
             # Click:
+            when debug > 2:
+              echo "hid_events UP: CLICK on ", elemName(eventTarget),
+                " activeStyle=", eventTarget.activeStyle
             if eventTarget.onClick != nil:
               eventTarget.onClick(eventTarget, e)
             eventTarget.trigger("click", e)
@@ -286,4 +310,9 @@ proc markElemWindowDirty(elem:DivRef)=
   ## flags the window owning the touched element.
   if elem != nil and elem.window != nil:
     elem.window.redrawFlag = true
+
+when debug > 2:
+  proc elemName(e:DivRef): string=
+    ## safe element name for debug traces (nil-aware).
+    if e == nil: "nil" else: e.name
 
