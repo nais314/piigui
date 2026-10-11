@@ -24,9 +24,10 @@ import std/monotimes
 const
   debug = 1
   MaxValRunes* = 384 # 256 ## max rune count of `val`; bounds the cached text texture
+  SelectionAdjustmentFactor* = 0.25 # 25% adjustment factor for highlight contrast
 
 type
-  MonoTextBox* = ref object of DivRef
+  MonoTextBoxObj* = object of DivObj
     val*: string # text is val here
     undoVal*: string = "" # snapshot at text-input start; Ctrl+Z restores it
     valCursorPos*: int = 0 # cursor position in `val`, counted in runes
@@ -34,22 +35,24 @@ type
 
     screenCursorPos*: int = 0 # cursor column on screen, counted in runes
     maxScreenCursorPos*: int = 0 # rightmost cursor column: w div charWidth
-    scrollOffset*: int = 0 # index of the first visible rune in `val`
+    firsVisibleRune*: int = 0 # index of the first visible rune in `val`
 
-    selectionStart*: int = 0 # if == valCursorPos: no selection
+    valSelectionStart*: int = 0 # if == valCursorPos: no selection
 
     charWidth*: int
 
     backgroundTextureCache*: TexturePtr # background+border, reused while scrolling
     textTextureCache*: TexturePtr # whole `val` rendered once, sliced on scroll
     textureCacheWithCursor*: TexturePtr # textureCache plus the cursor line
-    textTextureOffset*: cfloat # src.x into textTextureCache: scrollOffset*charWidth
+    selectedTextureCache*: TexturePtr # selected text rendered with highlight color
+    textTextureOffset*: cfloat # src.x into textTextureCache: firsVisibleRune*charWidth
     textTextureW*: int
     textTextureH*: int
 
     lastDrawTick: int64 # blink effect
     drawCursor: bool = false
 
+  MonoTextBox* = ref MonoTextBoxObj
   TextBox* = MonoTextBox
 
 #----------------------------------------------------
@@ -58,6 +61,8 @@ type
 #*       FORWARD DECLARATIONS FOR READBILITY
 #*=================================================
 
+proc draw*(self:DivRef, scrollXArg, scrollYArg:int) #!FWD
+
 proc onFocus(this:DivRef){.nosinks.} #!FWD
 proc onBlur(this:DivRef){.nosinks.} #!FWD
 proc onTextInput(this: DivRef, val:string){.nosinks.} #!FWD
@@ -65,18 +70,25 @@ proc onMouseButtonUp(this:DivRef) #!FWD
 proc onClick(this:DivRef, eventObj:sdl.Event) #!FWD
 proc keyDownEventListener(self:DivRef, e:sdl.Event):bool {.nosinks.} #!FWD
 
+#draw helpers
+proc hasSelection*(this: MonoTextBox):bool #!FWD
+
 proc clampToMaxRunes(val: string): string #!FWD
 proc measureCharWidthIfNeeded(this: MonoTextBox) #!FWD
 proc updateCursorView(this: MonoTextBox) #!FWD
 
+
+
 #* texture-cache helpers used by draw, defined further down
 proc ensureTextureTargets(this: MonoTextBox): bool #!FWD
+
 proc renderBackgroundCache(this: MonoTextBox) #!FWD
 proc renderTextTexture(this: MonoTextBox): bool #!FWD
+proc renderSelectedTexture(this: MonoTextBox): bool  #!FWD
+
 proc composeTextureCache(this: MonoTextBox) #!FWD
 proc composeCursorTexture(this: MonoTextBox) #!FWD
 
-proc draw*(self:DivRef, scrollXArg, scrollYArg:int) #!FWD
 
 
 
@@ -238,6 +250,10 @@ proc draw*(self:DivRef, scrollXArg, scrollYArg:int)=
       this.renderBackgroundCache()
 
       if not this.renderTextTexture():
+        #* font render failed: release the target, keep redrawFlag set
+        discard sdl.setRenderTarget(this.window.renderer, nil)
+        return
+      if not this.renderSelectedTexture():
         #* font render failed: release the target, keep redrawFlag set
         discard sdl.setRenderTarget(this.window.renderer, nil)
         return
@@ -446,10 +462,10 @@ proc onClick(this:DivRef, eventObj:sdl.Event)=
   self.measureCharWidthIfNeeded()
   withLock self.lock:
     #* convert the clicked pixel column into a rune index in the whole text;
-    #* scrollOffset maps the visible window back to `val`
+    #* firsVisibleRune maps the visible window back to `val`
     if self.charWidth > 0:
-      let clickedCol = max(0, eventObj.motion.x.int - this.x1) div self.charWidth
-      self.valCursorPos = clamp(self.scrollOffset + clickedCol, 0, self.valRuneLen)
+      let clickedRunePos = max(0, eventObj.motion.x.int - this.x1) div self.charWidth
+      self.valCursorPos = clamp(self.firsVisibleRune + clickedRunePos, 0, self.valRuneLen)
     self.updateCursorView()
     self.drawCursor = true
     self.lastDrawTick = getMonoTime().ticks
@@ -492,12 +508,12 @@ proc keyDownEventListener(self:DivRef, e:sdl.Event):bool {.nosinks.}=
       this.val = this.undoVal
       this.valRuneLen = this.val.runeLen
       this.valCursorPos = this.valRuneLen
-      this.selectionStart = this.valCursorPos
+      this.valSelectionStart = this.valCursorPos
       this.updateCursorView()
       this.redrawFlag = rkFullRedraw
       return true
 
-    let oldScrollOffset = this.scrollOffset
+    let oldScrollOffset = this.firsVisibleRune
     var isTextEdit = false
 
     case e.key.key
@@ -541,12 +557,12 @@ proc keyDownEventListener(self:DivRef, e:sdl.Event):bool {.nosinks.}=
       this.redrawFlag = rkFullRedraw
     else:
       this.updateCursorView()
-      if this.scrollOffset != oldScrollOffset:
+      if this.firsVisibleRune != oldScrollOffset:
         this.setRedrawFlag(rkScrollTexture)
       else:
         this.setRedrawFlag(rkCursorRedraw)
 
-    this.selectionStart = this.valCursorPos
+    this.valSelectionStart = this.valCursorPos
     #! show the caret at once instead of waiting for the next blink phase
     this.drawCursor = true
     this.lastDrawTick = getMonoTime().ticks
@@ -604,7 +620,7 @@ proc updateCursorView(this: MonoTextBox) =
   if this.charWidth <= 0 or this.w <= 0:
     # no usable metrics or width yet: keep the view at the start
     this.maxScreenCursorPos = 0
-    this.scrollOffset = 0
+    this.firsVisibleRune = 0
     this.screenCursorPos = 0
     this.textTextureOffset = 0.0
     return
@@ -613,18 +629,33 @@ proc updateCursorView(this: MonoTextBox) =
   this.valCursorPos = clamp(this.valCursorPos, 0, this.valRuneLen)
   let maxScrollOffset = max(0, this.valRuneLen - this.maxScreenCursorPos)
 
-  if this.valCursorPos < this.scrollOffset:
-    this.scrollOffset = this.valCursorPos
-  elif this.valCursorPos > this.scrollOffset + this.maxScreenCursorPos:
-    this.scrollOffset = this.valCursorPos - this.maxScreenCursorPos
+  if this.valCursorPos < this.firsVisibleRune:
+    this.firsVisibleRune = this.valCursorPos
+  elif this.valCursorPos > this.firsVisibleRune + this.maxScreenCursorPos:
+    this.firsVisibleRune = this.valCursorPos - this.maxScreenCursorPos
 
-  this.scrollOffset = clamp(this.scrollOffset, 0, maxScrollOffset)
-  this.screenCursorPos = this.valCursorPos - this.scrollOffset
-  this.textTextureOffset = (this.scrollOffset * this.charWidth).cfloat
+  this.firsVisibleRune = clamp(this.firsVisibleRune, 0, maxScrollOffset)
+  this.screenCursorPos = this.valCursorPos - this.firsVisibleRune
+  this.textTextureOffset = (this.firsVisibleRune * this.charWidth).cfloat
 
+
+proc hasSelection*(this: MonoTextBox):bool =
+  let minSel = min(this.valSelectionStart, this.valCursorPos)
+  let maxSel = max(this.valSelectionStart, this.valCursorPos)
+  result = minSel < maxSel
 #*=================================================
 #*              TEXTURE CACHES
 #*=================================================
+
+
+########  ######## ##    ## ########  ######## ########  
+##     ## ##       ###   ## ##     ## ##       ##     ## 
+##     ## ##       ####  ## ##     ## ##       ##     ## 
+########  ######   ## ## ## ##     ## ######   ########  
+##   ##   ##       ##  #### ##     ## ##       ##   ##   
+##    ##  ##       ##   ### ##     ## ##       ##    ##  
+##     ## ######## ##    ## ########  ######## ##     ## 
+ 
 
 proc destroyCachedTexture(texture: var TexturePtr) =
   ## Releases one cached GPU texture and clears the reference so a later
@@ -632,6 +663,20 @@ proc destroyCachedTexture(texture: var TexturePtr) =
   if texture != nil:
     sdl.destroyTexture(texture)
     texture = nil
+#------------------------------------------------
+
+
+method dispose*(this: var MonoTextBoxObj) {.raises: [].} =
+  ## Releases the GPU caches owned by MonoTextBox. `textureCache` (the base
+  ## field) is freed by `=destroy(DivObj)` and is not touched here. Managed
+  ## fields (`val`, `undoVal`) are torn down by Nim before this runs.
+  destroyCachedTexture(this.backgroundTextureCache)
+  destroyCachedTexture(this.textTextureCache)
+  destroyCachedTexture(this.textureCacheWithCursor)
+  destroyCachedTexture(this.selectedTextureCache)
+#------------------------------------------------
+
+
 
 proc createTargetTexture(this: MonoTextBox): TexturePtr =
   ## Creates a blend-capable render target sized to this element.
@@ -643,6 +688,9 @@ proc createTargetTexture(this: MonoTextBox): TexturePtr =
     this.h.cint)
   if result != nil:
     discard result.setTextureBlendMode(sdl.BLENDMODE_BLEND)
+#------------------------------------------------
+
+
 
 proc ensureTextureTargets(this: MonoTextBox): bool =
   ## (Re)creates the three render targets when missing or after a resize.
@@ -662,14 +710,19 @@ proc ensureTextureTargets(this: MonoTextBox): bool =
   destroyCachedTexture(this.textureCache)
   destroyCachedTexture(this.backgroundTextureCache)
   destroyCachedTexture(this.textureCacheWithCursor)
+  destroyCachedTexture(this.selectedTextureCache)
 
   this.textureCache = this.createTargetTexture()
   this.backgroundTextureCache = this.createTargetTexture()
   this.textureCacheWithCursor = this.createTargetTexture()
+  this.selectedTextureCache = this.createTargetTexture()
 
   result = this.textureCache != nil and
            this.backgroundTextureCache != nil and
            this.textureCacheWithCursor != nil
+#------------------------------------------------
+
+
 
 proc renderBackgroundCache(this: MonoTextBox) =
   ## Renders background+border exactly once; the result is reused verbatim
@@ -698,6 +751,9 @@ proc renderBackgroundCache(this: MonoTextBox) =
     discard setRenderDrawColor(this.window.renderer,
       this.styleCache[this.activeStyle].borderColor)
     discard this.window.renderer.renderRect(addr(canvasFRect)) #TODO bordersize loop, var borderFRect, 
+#------------------------------------------------
+
+
 
 proc renderTextTexture(this: MonoTextBox): bool =
   ## Renders the whole `val` once into `textTextureCache`; scrolling later
@@ -710,48 +766,23 @@ proc renderTextTexture(this: MonoTextBox): bool =
   if this.val.len == 0:
     return true
 
+  #* render once with the active style font color; renderSelectedTexture derives
+  #* its own highlight color, so a white render + tint is unnecessary
   let
     font = this.pgui.fonts[this.styleCache[this.activeStyle].font].fontPtr
     fontColor = this.styleCache[this.activeStyle].color
 
-  #* sscmSupported/sscmUnknown render white and tint with setTextureColorMod;
-  #* sscmUnsupported renders already colored. Unknown probes the cheap path once.
-  let useColorMod = this.pgui.state.SupportsColorMod != sscmUnsupported
-  let renderColor = if useColorMod: whiteColor else: fontColor
-
-  var surface = ttf.renderTextBlended(font, this.val.cstring, 0, renderColor)
+  let surface = ttf.renderTextBlended(font, this.val.cstring, 0, fontColor)
   if surface == nil:
     return false
 
-  var
+  let
     surfaceW = surface.w.int
     surfaceH = surface.h.int
-    texture = sdl.createTextureFromSurface(this.window.renderer, surface)
+  let texture = sdl.createTextureFromSurface(this.window.renderer, surface)
   destroySurface(surface)
   if texture == nil:
     return false
-
-  if useColorMod:
-    #* tint the white render; alpha is not covered by setTextureColorMod
-    if texture.setTextureColorMod(
-        fontColor.r.uint8, fontColor.g.uint8, fontColor.b.uint8):
-      if fontColor.a < 255'u8:
-        discard texture.setTextureAlphaMod(fontColor.a)
-      this.pgui.state.SupportsColorMod = sscmSupported
-    else:
-      #* tinting unsupported: drop the white texture and render colored instead
-      this.pgui.state.SupportsColorMod = sscmUnsupported
-      sdl.destroyTexture(texture)
-      texture = nil
-      surface = ttf.renderTextBlended(font, this.val.cstring, 0, fontColor)
-      if surface == nil:
-        return false
-      surfaceW = surface.w.int
-      surfaceH = surface.h.int
-      texture = sdl.createTextureFromSurface(this.window.renderer, surface)
-      destroySurface(surface)
-      if texture == nil:
-        return false
 
   this.textTextureCache = texture
   this.textTextureW = surfaceW
@@ -759,6 +790,127 @@ proc renderTextTexture(this: MonoTextBox): bool =
   if this.valRuneLen > 0:
     this.charWidth = this.textTextureW div this.valRuneLen
   result = true
+#------------------------------------------------
+
+
+
+proc renderSelectedTexture(this: MonoTextBox): bool =
+  ## Renders the whole `val` once into `selectedTextureCache` 
+  ## using the inverted/adjusted highlight color.
+  destroyCachedTexture(this.selectedTextureCache)
+  this.selectedTextureCache = this.createTargetTexture()
+  if this.selectedTextureCache == nil:
+    #! never let a nil target fall through to sdl.setRenderTarget(..., nil):
+    #! that would draw the highlight straight onto the window. Keep the redraw
+    #! request and retry on the next frame instead.
+    return false
+  discard sdl.setRenderTarget(this.window.renderer, this.selectedTextureCache)
+  discard setRenderDrawColor(this.window.renderer, transparentColor)
+  discard this.window.renderer.renderClear()
+
+  if this.val.len == 0:
+    return true
+
+  #* Calculate highlight background color (inverse + 25% adjustment)
+  let baseBgColor = if this.styleCache[this.activeStyle].backGroundColor != EmptyColor:
+                      this.styleCache[this.activeStyle].backGroundColor
+                    else:
+                      sdl.Color(r: 255, g: 255, b: 255, a: 255) # default white fallback
+  #let invBgCol = invertColor(baseBgColor)
+  #let bgLum = getLuminance(baseBgColor)
+  let backGroundColor = adjustColorBrightness(
+                          invertColor(baseBgColor),
+                          SelectionAdjustmentFactor,
+                          getLuminance(baseBgColor) >= 128.0)
+
+
+  var canvasFRect = sdl.FRect(
+    x: 0.0,
+    y: 0.0,
+    w: this.w.cfloat,
+    h: this.h.cfloat)
+
+  #* draw the background
+  discard setRenderDrawColor(this.window.renderer, backGroundColor)
+  discard this.window.renderer.renderFillRect(addr(canvasFRect))
+
+  #* draw border (canvas edge; the outer half is clipped by the target)
+  #TODO: bordersize
+  if this.styleCache[this.activeStyle].borderColor != EmptyColor:
+    discard setRenderDrawColor(this.window.renderer,
+      this.styleCache[this.activeStyle].borderColor)
+    discard this.window.renderer.renderRect(addr(canvasFRect)) #TODO bordersize loop, var borderFRect, 
+
+
+  #* create text .................................
+  let
+    font = this.pgui.fonts[this.styleCache[this.activeStyle].font].fontPtr
+    baseFontColor = this.styleCache[this.activeStyle].color
+    
+  #let invTextCol = invertColor(baseFontColor)
+  #let textLum = getLuminance(baseFontColor)
+  # Invert text color and ensure 25% contrast adjustment
+  let highlightTextColor = adjustColorBrightness(
+                              invertColor(baseFontColor),
+                              SelectionAdjustmentFactor,
+                              getLuminance(baseFontColor) >= 128.0)
+
+  let surface = ttf.renderTextBlended(font, this.val.cstring, 0, highlightTextColor)
+  if surface == nil:
+    return false
+
+  let texture = sdl.createTextureFromSurface(this.window.renderer, surface)
+  destroySurface(surface)
+  if texture == nil:
+    return false
+
+  #! release the transient source texture on every exit path, including the
+  #! `visibleW <= 0` early return below
+  defer: sdl.destroyTexture(texture)
+
+  let
+    #* slice from the full text texture: rest of the text after the scroll
+    visibleW = min(this.w.cfloat, this.textTextureW.cfloat - this.textTextureOffset)
+
+    #[ # single line is vertically centered in the box
+    textY =
+      if this.h.cfloat > this.textTextureH.cfloat:
+        (this.h.cfloat - this.textTextureH.cfloat) / 2.0
+      else:
+        0.0 ]#
+
+  if visibleW <= 0.0:
+    #* nothing visible to cache; report failure so the caller keeps redrawing
+    return false
+
+  var
+    srcFRect = sdl.FRect(
+      x: this.textTextureOffset,
+      y: 0.0,
+      w: visibleW,
+      h: this.h.cfloat)
+    dstFRect = sdl.FRect(
+      x: 0.0,
+      y: 0.0,
+      w: visibleW,
+      h: this.h.cfloat)
+  discard this.window.renderer.renderTexture(
+    texture, addr srcFRect, addr dstFRect)
+  #-----------------
+
+  #this.selectedTextureCache = texture
+  result = true
+#------------------------------------------------
+
+
+ ######   #######  ##     ## ########   #######   ######  ######## 
+##    ## ##     ## ###   ### ##     ## ##     ## ##    ## ##       
+##       ##     ## #### #### ##     ## ##     ## ##       ##       
+##       ##     ## ## ### ## ########  ##     ##  ######  ######   
+##       ##     ## ##     ## ##        ##     ##       ## ##       
+##    ## ##     ## ##     ## ##        ##     ## ##    ## ##       
+ ######   #######  ##     ## ##         #######   ######  ######## 
+
 
 proc composeTextureCache(this: MonoTextBox) =
   ## Rebuilds `textureCache` from the cached background plus the visible slice
@@ -771,17 +923,19 @@ proc composeTextureCache(this: MonoTextBox) =
   if this.backgroundTextureCache != nil:
     discard this.window.renderer.renderTexture(this.backgroundTextureCache, nil, nil)
 
-  if this.textTextureCache != nil and this.textTextureW > 0:
-    let
-      #* slice from the full text texture: rest of the text after the scroll
-      visibleW = min(this.w.cfloat, this.textTextureW.cfloat - this.textTextureOffset)
-      #* single line is vertically centered in the box
-      textY =
-        if this.h.cfloat > this.textTextureH.cfloat:
-          (this.h.cfloat - this.textTextureH.cfloat) / 2.0
-        else:
-          0.0
 
+  let
+    #* slice from the full text texture: rest of the text after the scroll
+    visibleW: cfloat = min(this.w.cfloat, this.textTextureW.cfloat - this.textTextureOffset)
+    #* single line is vertically centered in the box
+    textY: cfloat =
+      if this.h.cfloat > this.textTextureH.cfloat:
+        (this.h.cfloat - this.textTextureH.cfloat) / 2.0
+      else:
+        0.0
+
+
+  if this.textTextureCache != nil and this.textTextureW > 0:
     if visibleW > 0.0:
       var
         srcFRect = sdl.FRect(
@@ -796,6 +950,50 @@ proc composeTextureCache(this: MonoTextBox) =
           h: this.textTextureH.cfloat)
       discard this.window.renderer.renderTexture(
         this.textTextureCache, addr srcFRect, addr dstFRect)
+  #.................................
+
+  #* draw highlighted text if selected
+
+  # calculate selection rune pos
+  let minSel = min(this.valSelectionStart, this.valCursorPos)
+  let maxSel = max(this.valSelectionStart, this.valCursorPos)
+  #let hasSelection = minSel < maxSel
+
+  # Overlay selected text slice on top of selection area using clip rect
+  if this.hasSelection and this.selectedTextureCache != nil and this.charWidth > 0:
+    let startRunePos = max(0, minSel - this.firsVisibleRune)
+    let endRunePos = min(this.maxScreenCursorPos + 1, maxSel - this.firsVisibleRune)
+    if startRunePos < endRunePos:
+      let clipX = this.x1.cfloat + (startRunePos * this.charWidth).cfloat
+      let clipW = ((endRunePos - startRunePos) * this.charWidth).cfloat
+      var clipRect = sdl.Rect(
+        x: clipX.cint,
+        y: this.y1.cint,
+        w: clipW.cint,
+        h: this.h.cint
+      )
+      discard sdl.setRenderClipRect(this.window.renderer, addr clipRect)
+      #....................
+      var
+        selSrcFRect = sdl.FRect(
+          x: this.textTextureOffset,
+          y: 0.0,
+          w: visibleW,
+          h: this.textTextureH.cfloat)
+        selDstFRect = sdl.FRect(
+          x: 0.0,
+          y: textY,
+          w: visibleW,
+          h: this.textTextureH.cfloat)
+
+      discard this.window.renderer.renderTexture(
+        this.selectedTextureCache, addr selSrcFRect, addr selDstFRect)
+
+      #* Reset clipping boundary to prevent drawing bleeding
+      discard sdl.setRenderClipRect(this.window.renderer, nil)
+#------------------------------------------------
+
+
 
 proc composeCursorTexture(this: MonoTextBox) =
   ## Copies `textureCache` and bakes the cursor line into
@@ -821,6 +1019,9 @@ proc composeCursorTexture(this: MonoTextBox) =
         this.h.cfloat)
 
 #----------------------------------------------------
+
+
+
 
 proc updateSelection*(self:MonoTextBox, e: sdl.Event)=
   let this = self

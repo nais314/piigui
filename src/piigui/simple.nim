@@ -148,17 +148,80 @@ proc simpleSDLInit*(pgui: Pgui): bool =
   return true
 
 
+# ===================================================
+#* TEXTURE COLOR MOD CAPABILITY PROBE
+# ===================================================
+
+proc probeColorModSupport*(renderer: RendererPtr): SdlSupportsColorModKind =
+  ## One-time capability test run when a renderer appears. Tinted widgets blit
+  ## static textures, so probe with the same surface->texture path they use.
+  ## SDL documents setTextureColorMod returning false when unsupported.
+  ## sscmUnknown is returned while no probe texture could be created, so the
+  ## caller can retry with the next renderer.
+  let surface = sdl.createSurface(1, 1, sdl.PIXELFORMAT_RGBA8888)
+  if surface == nil:
+    return sscmUnknown
+  defer: sdl.destroySurface(surface)
+
+  let texture = sdl.createTextureFromSurface(renderer, surface)
+  if texture == nil:
+    return sscmUnknown
+  defer: sdl.destroyTexture(texture)
+
+  #* non-white: a real modulation; white may be short-circuited as a no-op
+  if texture.setTextureColorMod(128'u8, 128'u8, 128'u8):
+    result = sscmSupported
+  else:
+    result = sscmUnsupported
+
+
+# ===================================================
+#* GPU CACHE TEARDOWN
+# ===================================================
+#? Currently UNUSED: `=destroy`/`dispose` already release element caches, and
+#? closeGui drops the tree before the renderer, so ORC collects them. This is a
+#? deterministic, GC-independent alternative kept for future use.
+#? Safe to comment this whole section out if not needed.
+proc freeGpuCaches*(this: DivRef) #!FWD
+proc freeGpuCaches*(sb: ScrollBar) #!FWD
+
+proc freeGpuCaches*(this: DivRef) =
+  ## Recursively frees cached GPU textures for `this` and its subtree,
+  ## including standalone scrollbar parts, without relying on the GC.
+  if this == nil:
+    return
+  for layer in this.layers:
+    for child in layer.elems:
+      freeGpuCaches(child)
+  if this.scrollbar != nil:
+    freeGpuCaches(this.scrollbar)
+  #! virtual widget cleanup (e.g. MonoTextBox extra textures)
+  this[].dispose()
+  if this.textureCache != nil:
+    sdl.destroyTexture(this.textureCache)
+    this.textureCache = nil
+
+proc freeGpuCaches*(sb: ScrollBar) =
+  ## Scrollbar parts are not in any layer, so they need their own walk.
+  if sb == nil:
+    return
+  freeGpuCaches(sb.vTrack)
+  freeGpuCaches(sb.vSlider)
+  freeGpuCaches(sb.vUp)
+  freeGpuCaches(sb.vDown)
+  freeGpuCaches(sb.hTrack)
+  freeGpuCaches(sb.hSlider)
+  freeGpuCaches(sb.hLeft)
+  freeGpuCaches(sb.hRight)
 
 
 # Shutdown sequence
+proc closeGui*(pgui: Pgui) #!FWD
+
 proc exit*(pgui: Pgui) =
-  pgui.destroyFonts()
-  sdl.destroyRenderer(pgui.renderer)
-  sdl.destroyWindow(pgui.window)
-  
-  ttf.quit()
-  #sdl.logInfo(sdl.LogCategoryApplication, "SDL shutdown completed")
-  sdl.quit()
+  ## Full teardown; delegates to closeGui so both paths free the element tree
+  ## before the renderer.
+  closeGui(pgui)
 
 
 
@@ -210,6 +273,10 @@ proc newSimpleWindow*(
 
   #discard sdl.setRenderDrawBlendMode(renderer, sdl.BLENDMODE_BLEND)
   discard renderer.setRenderDrawBlendMode(sdl.BLENDMODE_BLEND)
+
+  #! renderer capability, probed once per pgui; tinted widgets consult it later
+  if pgui.state.SupportsColorMod == sscmUnknown:
+    pgui.state.SupportsColorMod = probeColorModSupport(renderer)
 
   #........................
 
@@ -290,10 +357,19 @@ proc newSimpleGui*(
 
 proc closeGui*(pgui: Pgui) =
   pgui.guiTimedEvents.setLen(0)
+  #! Release the element tree BEFORE the renderer is destroyed. Dropping the
+  #! owning refs leaves the parent<->child cycles unreachable, and
+  #! GC_fullCollect runs their =destroy/dispose hooks, freeing every element
+  #! GPU texture while the renderer is still valid.
+  for _, win in pgui.windows:
+    win.rootElem = nil
+  pgui.focusElem = nil
+  pgui.hoverElem = nil
+  pgui.mouseSource = nil
+  GC_fullCollect()
   sdl.destroyRenderer(pgui.renderer)
   sdl.destroyWindow(pgui.window)
-  for i in 0..pgui.fonts.high:
-    ttf.closeFont(pgui.fonts[i].fontPtr)
+  closeAllFonts(pgui)
   ttf.quit()
   #sdl.logInfo(sdl.LogCategoryApplication, "SDL shutdown completed")
   sdl.quit()

@@ -32,7 +32,7 @@ const
   ScrollBarWheelStep* = 40
   ScrollBarArrowStep* = 16
 
-  EmptyColor* : sdl.Color = (r:0'u8,g:0'u8,b:0'u8,a:0'u8)
+  EmptyColor* : sdl.Color = (r:0'u8,g:255'u8,b:0'u8,a:0'u8)
 
   transparentColor* = sdl.Color((r:50'u8, g:50'u8, b:50'u8, a:0'u8))
   blackColor* = sdl.Color((r:0'u8, g:0'u8, b:0'u8, a:255'u8))
@@ -134,6 +134,9 @@ type
     color*: sdl.Color = EmptyColor #(r:0'u8, g:0'u8, b:0'u8, a:255'u8)
     backGroundColor*: sdl.Color = EmptyColor #(r:222'u8, g:222'u8, b:222'u8, a:255'u8)
     borderColor*: sdl.Color = EmptyColor #sdl.Color = (r:55'u8, g:55'u8, b:55'u8, a:255'u8)
+    #* RGB multiplied into texture copies at blit time; the alpha byte is not
+    #* applied and a == 0 (EmptyColor) means "no tint, do not copy on merge"
+    tint*: sdl.Color = EmptyColor
 
     #TODO BACKGROUND
     #background*: BackGroundKindRef
@@ -194,6 +197,7 @@ type
   #------------------------------------------------------
 
   #! REMEMBER TO MODIFY proc `=destroy`(this: var DivObj)
+  #! raw (non-managed) resources of a subtype: override `method dispose`
   DivRef* = ref DivObj
   DivObj* = object of RootElementObj
     typeName*: string # for type introspection
@@ -228,7 +232,9 @@ type
     styles*: StyleSheetSeq # sequence of styles "cascading style sheet"
     styleCache*: StyleSheetRef_Tbl #TableRef[string, StyleSheetRef]
     activeStyle*: string #StyleSheetRef # todo rethink if table needed or just default
-    prevStyle*: string #StyleSheetRef
+    #* base style to return to after a transient pseudo-state; kept current by
+    #* setActiveStyle and applied by restoreActiveStyle
+    prevStyle*: string
     inlineStyle*: StyleSheetRef # props changed on the fly
 
     isRecalculated*: bool #??? muAuto calculates childs for its own dimensions
@@ -346,9 +352,23 @@ type
 
 
 
+method dispose*(this: var DivObj) {.base, raises: [].} =
+  ## Virtual cleanup hook for resources Nim cannot free on its own, such as raw
+  ## SDL textures owned by a widget subtype.
+  ##
+  ## Called from `=destroy(DivObj)`, so the object's runtime subtype is still
+  ## known and the dispatch reaches the matching override. Managed fields
+  ## (strings, refs, seqs) need no handling here: the generated subtype
+  ## destructor tears them down before `=destroy(DivObj)` runs.
+  discard
+
 proc `=destroy`(this: var DivObj) =
   ## called when a DivRef is collected (ORC)
   ## frees the per-element GPU cache texture
+  #! dispose first: the runtime subtype is still intact and can release its
+  #! raw resources while the base fields below are still alive
+  this.dispose()
+
   if this.textureCache != nil:
     sdl.destroyTexture(this.textureCache)
     this.textureCache = nil
@@ -360,6 +380,7 @@ proc `=destroy`(this: var DivObj) =
   `=destroy`(this.name)
   `=destroy`(this.group)
   `=destroy`(this.layers)
+  `=destroy`(this.scrollbar)
   `=destroy`(this.styles)
   `=destroy`(this.styleCache)
   `=destroy`(this.activeStyle)
@@ -509,6 +530,7 @@ proc clearStyleSheet*(s: StyleSheetRef) =
   s.color = EmptyColor
   s.backGroundColor = EmptyColor
   s.borderColor = EmptyColor
+  s.tint = EmptyColor
 
   s.padding = -1
   s.spacing = -1
@@ -540,6 +562,8 @@ proc `<-`*(t: StyleSheetRef, s: StyleSheetRef)=
     #echo "<- t.color.r ", t.color.r.int
   if s.backGroundColor != EmptyColor : t.backGroundColor = s.backGroundColor
   if s.borderColor != EmptyColor : t.borderColor = s.borderColor
+  #* same full-RGBA value comparison as the colors above: only a set tint copies
+  if s.tint != EmptyColor : t.tint = s.tint
   if s.font != -1 : t.font = s.font
   #echo t.padding, " <- ", s.padding
   if s.padding > -1: t.padding = s.padding

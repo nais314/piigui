@@ -144,22 +144,32 @@ proc default_onHover*(this:DivRef){.nosinks.}=
   const debug = 1
   if this.pgui.mouseSource == nil: # else dragover
 
-    # dont touch if already hovered or focused
-    if this.pgui.hoverElem != this and
-    this.pgui.focusElem != this :
+    #! a focused element keeps its own style only if it really defines a :focus
+    #! pseudo-style; buttons (no :focus) must still receive :hover
+    let focusedKeepsStyle =
+      this.pgui.focusElem == this and this.styleCache.hasKey("focus")
 
+    #! re-apply :hover whenever it is not currently shown; hoverElem may still
+    #! point here although a press/release changed the style back to the base
+    if this.styleCache.hasKey("hover") and
+    this.activeStyle != "hover" and not focusedKeepsStyle:
       setActiveStyle(this,"hover")
+      #! hover changed this element's style: flag its window even when the
+      #! hover target did not change (re-hover on the same elem after a press)
+      if this.window != nil: this.window.redrawFlag = true
       when debug > 0: echo "hovering ", this.name
-      # restore prev hover elems style
-      # unless its focused - dont remove focus style!
-      if this.pgui.hoverElem != nil and
-      this.pgui.focusElem != this.pgui.hoverElem :
-        when debug > 0: echo "hovering ", this.name, " previously: ",this.pgui.hoverElem.name
-        this.pgui.hoverElem.setDefaultStyle()
-    
+
+    # restore the previous hover element to its base style, unless it keeps a
+    # :focus style
+    if this.pgui.hoverElem != nil and this.pgui.hoverElem != this and
+    not (this.pgui.hoverElem == this.pgui.focusElem and
+    this.pgui.hoverElem.styleCache.hasKey("focus")):
+      when debug > 0: echo "hovering ", this.name, " previously: ",this.pgui.hoverElem.name
+      this.pgui.hoverElem.restoreActiveStyle()
+      if this.pgui.hoverElem.window != nil: this.pgui.hoverElem.window.redrawFlag = true
+
     # for hover events to work, like scroll:
-    if this.pgui.hoverElem != this:
-      this.pgui.hoverElem = this
+    this.pgui.hoverElem = this
 
 proc parent_onHover*(this:DivRef){.nosinks.}=
   ## use this for "click-through"
@@ -1002,13 +1012,19 @@ proc getElementAtCoord*(root: DivRef, x,y:int): DivRef =
   ## search from top to bottom
   ## x,y are screen coords; the scroll offsets of scrollable
   ## ancestors are added so scrolled content is hit correctly.
+  
+  #* fast path: still inside current hover?
+  if root.pgui.hoverElem != nil and
+    x >= root.pgui.hoverElem.x1 and x <= root.pgui.hoverElem.x2 and
+    y >= root.pgui.hoverElem.y1 and y <= root.pgui.hoverElem.y2:
+    return root.pgui.hoverElem  # O(1), no tree walk
 
-  proc rec(elem: DivRef, accX, accY: int): DivRef =
+  proc sub_getElemRecursive(elem: DivRef, accScrollX, accScrollY: int): DivRef =
     # elem and its children are clipped to elem's on-screen rect,
     # so if the point is outside it, nothing inside can be hit
     # (this also hides overflowed content of non-scrollable parents)
-    let ex = x + accX
-    let ey = y + accY
+    let ex = x + accScrollX
+    let ey = y + accScrollY
     if ex < elem.x1 or ex > elem.x2 or ey < elem.y1 or ey > elem.y2:
       return nil
 
@@ -1019,19 +1035,20 @@ proc getElementAtCoord*(root: DivRef, x,y:int): DivRef =
         return result
 
     # elem's own children are shifted by elem's scroll too
-    let cAccX = accX + (if elem.scrollable: elem.scrollX else: 0)
-    let cAccY = accY + (if elem.scrollable: elem.scrollY else: 0)
+    let childAccScrollX = accScrollX + (if elem.scrollable: elem.scrollX else: 0)
+    let childAccScrollY = accScrollY + (if elem.scrollable: elem.scrollY else: 0)
     for i_layer in countdown(elem.layers.high, 0):
       for child in elem.layers[i_layer].elems:
-        result = rec(child, cAccX, cAccY)
+        result = sub_getElemRecursive(child, childAccScrollX, childAccScrollY)
         if result != nil:
           return result
 
     # the point is inside elem (checked above); return it.
-    # (the root is never passed to rec, so elem.parent is always non-nil)
+    # (the root is never passed to sub_getElemRecursive, so elem.parent is always non-nil)
     return elem
+    #..................................
 
-  # the root can scroll too: check its overlay at the window edge first
+  #* the root can scroll too: check its overlay at the window edge first
   if root.scrollable and root.scrollbar != nil:
     result = root.scrollbar.hitTest(x, y)
     if result != nil:
@@ -1042,7 +1059,7 @@ proc getElementAtCoord*(root: DivRef, x,y:int): DivRef =
   let rAccY = if root.scrollable: root.scrollY else: 0
   for i_layer in countdown(root.layers.high, 0):
     for elem in root.layers[i_layer].elems:
-      result = rec(elem, rAccX, rAccY)
+      result = sub_getElemRecursive(elem, rAccX, rAccY) #! START
       if result != nil:
         return result
 

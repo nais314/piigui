@@ -125,10 +125,17 @@ proc hid_events*(pgui:Pgui): bool = # exit pgui on true
         # else maybe cleanup needed?
         else:
           if previousHover != nil:
-            previousHover.setDefaultStyle()
+            previousHover.restoreActiveStyle()
             pgui.hoverElem = nil
             markElemWindowDirty(previousHover)
             markElemWindowDirty(eventTarget)
+
+      #! pointer over empty background: the root itself is never returned by
+      #! getElementAtCoord, so drop the previous hover and restore its base style
+      elif pgui.mouseSource == nil and pgui.hoverElem != nil:
+        markElemWindowDirty(pgui.hoverElem)
+        pgui.hoverElem.restoreActiveStyle()
+        pgui.hoverElem = nil
 
 
     elif e.`type` == sdl.EVENT_MOUSE_BUTTON_DOWN: #! ----- MOUSEBUTTONDOWN
@@ -190,6 +197,12 @@ proc hid_events*(pgui:Pgui): bool = # exit pgui on true
               eventTarget.onFocus(eventTarget)
 
           
+      elif pgui.mouseSource != nil:
+        #! released over empty background (no element hit): the pressed source
+        #! would otherwise stay stuck in its pressed/drag state
+        if pgui.mouseSource.onDragEnd != nil:
+          pgui.mouseSource.onDragEnd(pgui.mouseSource)
+
       if pgui.mouseSource != nil:
         pgui.mouseSource.dragSaved = false
       pgui.mouseSource = nil

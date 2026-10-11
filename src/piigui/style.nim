@@ -205,6 +205,20 @@ proc setBorderColor*(this:StyleSheetRef,
   this.borderColor.g = g.uint8
   this.borderColor.b = b.uint8
   this.borderColor.a = a.uint8
+
+proc setTint*(this:StyleSheetRef,
+                col:HexColor)=
+  this.tint.r = ((col shr 24) and 0xFF).uint8
+  this.tint.g = ((col shr 16) and 0xFF).uint8
+  this.tint.b = ((col shr 8) and 0xFF).uint8
+  this.tint.a = ( col and 0xFF).uint8
+
+proc setTint*(this:StyleSheetRef,
+              r,g,b,a:int)=
+  this.tint.r = r.uint8
+  this.tint.g = g.uint8
+  this.tint.b = b.uint8
+  this.tint.a = a.uint8
 #______________________________________
 
 
@@ -394,6 +408,13 @@ proc removeStyle*(this:DivRef,
   this.recalcStyle(recalcChildrenStyles)
 
 
+const
+  #! framework-managed pseudo-states. They are momentary overrides and must not
+  #! overwrite DivObj.prevStyle, which remembers the base style to restore to.
+  #! Any other activeStyle name ("default", "RED", ...) is a base style.
+  TransientPseudoStyles* = ["hover", "active", "focus", "dragstart", "dragover"]
+
+
 proc setActiveStyle*(this:DivRef, styleName:string,
                      recalcChildrenStyles:bool=false)=
   ## recalcChildrenStyles is false by default
@@ -407,7 +428,10 @@ proc setActiveStyle*(this:DivRef, styleName:string,
     if styleName == this.activeStyle: return
     if this.styleCache.hasKey(styleName):
       if this.styleCache[styleName] != nil:
-        this.prevStyle = this.activeStyle
+        #! a transient pseudo-state changes the look but not the base style
+        #! that prevStyle remembers; base styles (default, RED, ...) update it
+        if not (styleName in TransientPseudoStyles):
+          this.prevStyle = styleName
         this.activeStyle = styleName
         this.redrawFlag = rkFullRedraw
 
@@ -429,6 +453,19 @@ proc setDefaultStyle*(this:DivRef,
           this.redrawFlag = rkFullRedraw
     if recalcChildrenStyles:
       this.recalcStyle(recursive=true)
+
+
+proc restoreActiveStyle*(this:DivRef,
+                         recalcChildrenStyles:bool=false)=
+  ## return to the base style recorded before the current transient pseudo-state,
+  ## falling back to "default" when none was recorded yet. Use this to leave a
+  ## :hover / :active / :focus override and reappear with the element's base
+  ## style (default today, RED/YELLOW/... when the app sets one).
+  if this != nil:
+    if this.prevStyle.len > 0 and this.styleCache.hasKey(this.prevStyle):
+      this.setActiveStyle(this.prevStyle, recalcChildrenStyles)
+    else:
+      this.setDefaultStyle(recalcChildrenStyles)
 #.........................
 
 
@@ -526,6 +563,25 @@ proc setColor*(this:DivRef,
   this.inlineStyle.color.a = ( col and 0xFF).uint8
   this.recalcStyle()
 
+proc setTint*(this:DivRef,
+              r:uint8=255,
+              g:uint8=255,
+              b:uint8=255,
+              a:uint8=255)=
+  this.inlineStyle.tint.r = r
+  this.inlineStyle.tint.g = g
+  this.inlineStyle.tint.b = b
+  this.inlineStyle.tint.a = a
+  this.recalcStyle()
+
+proc setTint*(this:DivRef,
+              col:HexColor)=
+  this.inlineStyle.tint.r = ((col shr 24) and 0xFF).uint8
+  this.inlineStyle.tint.g = ((col shr 16) and 0xFF).uint8
+  this.inlineStyle.tint.b = ((col shr 8) and 0xFF).uint8
+  this.inlineStyle.tint.a = ( col and 0xFF).uint8
+  this.recalcStyle()
+
 
 proc setPadding*(this:DivRef, val:int= -1)=
   this.inlineStyle.padding = val
@@ -534,6 +590,18 @@ proc setPadding*(this:DivRef, val:int= -1)=
 proc setSpacing*(this:DivRef, val:int= -1)=
   this.inlineStyle.spacing = val
   this.recalcStyle()
+
+
+
+
+
+ ######   #######  ##        #######  ########  
+##    ## ##     ## ##       ##     ## ##     ## 
+##       ##     ## ##       ##     ## ##     ## 
+##       ##     ## ##       ##     ## ########  
+##       ##     ## ##       ##     ## ##   ##   
+##    ## ##     ## ##       ##     ## ##    ##  
+ ######   #######  ########  #######  ##     ## 
 
 
 # COLOR ###########################
@@ -548,12 +616,14 @@ proc toRGBA*(col:sdl.Color):uint32=
   result = result or col.a
 
 proc lighten*(col:sdl.Color, val:uint8 = 50):sdl.Color=
+  ## ? DEPRECATED, use adjustColorBrightness
   result.r = if (255 - col.r) < val: 255 else: col.r + val
   result.g = if (255 - col.g) < val: 255 else: col.g + val
   result.b = if (255 - col.b) < val: 255 else: col.b + val
   result.a = col.a
 
 proc darken*(col:sdl.Color, val:uint8 = 50):sdl.Color=
+  ## ? DEPRECATED, use adjustColorBrightness
   result.r = if col.r < val: 0 else: col.r - val
   result.g = if col.g < val: 0 else: col.g - val
   result.b = if col.b < val: 0 else: col.b - val
@@ -561,6 +631,7 @@ proc darken*(col:sdl.Color, val:uint8 = 50):sdl.Color=
 
 proc buttonTextColor*(col:sdl.Color):sdl.Color=
   ## https://stackoverflow.com/questions/596216/formula-to-determine-brightness-of-rgb-color
+  ## ? DEPRECATED, use adjustColorBrightness
   let lightness = (0.299 * col.r.float + 0.587 * col.g.float + 0.114 * col.b.float)
   if lightness > 100:
     result.r = 0
@@ -571,3 +642,52 @@ proc buttonTextColor*(col:sdl.Color):sdl.Color=
     result.g = 255
     result.b = 255
   result.a = 255
+
+
+#[ const
+  SelectionAdjustmentFactor* = 0.25 # 25% adjustment factor for highlight contrast ]#
+
+proc invertColor*(c: sdl.Color): sdl.Color =
+  ## Inverts an SDL Color (RGB), keeping Alpha intact.
+  result = sdl.Color(
+    r: (255 - c.r.int).uint8,
+    g: (255 - c.g.int).uint8,
+    b: (255 - c.b.int).uint8,
+    a: c.a
+  )
+
+proc getLuminance*(c: sdl.Color): float =
+  ## Calculates perceived luminance of a color.
+  ## 0..255
+  ##? return 0.0..1.0 or 0..100 ?
+  result = (0.299 * c.r.float) + (0.587 * c.g.float) + (0.114 * c.b.float)
+
+proc adjustColorBrightness*(c: sdl.Color, factor: float = 0.2500, darker: bool = true): sdl.Color =
+  ## Adjusts color brightness by a given factor (e.g. 0.25 for 25%).
+  var r = c.r.float
+  var g = c.g.float
+  var b = c.b.float
+  if darker:
+    r = r * (1.0 - factor)
+    g = g * (1.0 - factor)
+    b = b * (1.0 - factor)
+  else:
+    r = r + (255.0 - r) * factor
+    g = g + (255.0 - g) * factor
+    b = b + (255.0 - b) * factor
+  result = sdl.Color(
+    r: clamp(r.int, 0, 255).uint8,
+    g: clamp(g.int, 0, 255).uint8,
+    b: clamp(b.int, 0, 255).uint8,
+    a: c.a
+  )
+
+proc calcFgColor*(backgroundColor: sdl.Color): sdl.Color =
+  const ColorAdjustmentFactor = 0.25
+  #let invTextCol = invertColor(baseFontColor)
+  #let textLum = getLuminance(baseFontColor)
+  # Invert text color and ensure 25% contrast adjustment
+  result = adjustColorBrightness(
+                              invertColor(backgroundColor),
+                              ColorAdjustmentFactor,
+                              getLuminance(backgroundColor) >= 128.0)

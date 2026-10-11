@@ -54,7 +54,7 @@ questions when the preferred solution or scope is unclear.
 Before undertaking major operations, refactoring, or implementing new mechanisms, analyze the user's underlying goal and the problem they intend to solve.
 
 - **Validate the approach:** Determine whether the requested implementation actually achieves the intended goal and is consistent with the existing architecture.
-- **Consider alternatives:** Look for simpler, more efficient, or more maintainable solutions before introducing new mechanisms or substantial changes.
+- **Consider alternatives:** Look for simpler, more efficient, elegant, or more maintainable solutions before introducing new mechanisms or substantial changes.
 - **Challenge incorrect assumptions:** If the request is based on a logical error, misunderstanding, or flawed premise, explain the issue and propose a correction.
 - **Minimize unnecessary changes:** Prefer the simplest solution that fully satisfies the user's requirements. Avoid introducing complexity without a clear benefit.
 - **Clarify when necessary:** If the goal, requirements, or constraints are ambiguous and materially affect the solution, ask the user before proceeding.
@@ -133,6 +133,11 @@ Rule: the top of the file must tell the story; details come later.
 - Prefer full words; fall back to a conventional abbreviation only for
   long, hot, or universally-known names. When you abbreviate, do it
   consistently across the codebase.
+- **Prioritize readability over brevity:** Prefer clear, descriptive identifiers (`element`, `buffer`, `capacity`) over cryptic 1-2 letter contractions.
+- **Idiomatic Nim abbreviations only:** Limit contractions to standard language idioms (`proc`, `seq`, `idx`, `len`, `buf`, `err`, `cfg`).
+- Abbreviate verbose compound names: When an identifier combines 3 or more long words (5+ characters each), abbreviate aggressively to avoid unwieldy names (e.g., bufMemMgr instead of bufferMemoryManager).
+- Follow Nim NEP 1 unless this document overrides it.
+- **Mirror the existing style of the module being changed or what is common pattern across the project.**
 
 ## Comments
 
@@ -228,11 +233,35 @@ Do not use `#!` for ordinary implementation details, routine assignments, or cod
 
 ## PERFORMANCE
 
-- No closure capture in hot code; pass state as a `var` object parameter.
-- Avoid repeated `seq[i]` indexing; bind a local alias.
-- Keep allocations out of per-element / per-line loops.
-- Prefer a value object (`object`) passed by `var` over a `ref` for transient
-  state.
+Applies to hot paths only (inner loops, per-element/per-line processing).
+Elsewhere, prefer clarity. Measure before and after optimizing; don't
+optimize on a hunch.
+
+- Avoid capturing closures, `=>` lambdas, and allocating sequtils helpers
+  (`map`, `filter`, ...) in hot code. Pass state explicitly as a `var`
+  object parameter.
+- Don't allocate inside per-element loops: preallocate (`newSeqOfCap`,
+  `setLen`), reuse buffers, and build strings with `add` rather than `&`.
+- Prevent implicit copies during aliasing: Plain let x = s[i] creates a full copy 
+  when s[i] is a string, seq, or large object. 
+  Use template, addr, lent, or {.cursor.} to alias elements without copying.
+- For transient, single-owner state, prefer a value `object` passed by
+  `var` over a `ref`. Use `ref` when state is shared or outlives the call.
+- If you are making benchmarking then Benchmark with release flags (`-d:release` or `-d:danger`), not debug builds.
+- Zero allocations per iteration: Preallocate sequence capacities (newSeqOfCap, setLen),
+  reuse buffer instances, and construct strings using add instead of string concatenation (&).
+- Prefer value objects over ref: Use value object types passed by var for transient,
+  single-owner state. Reserve ref object strictly for state that is shared or outlives the calling scope. 
+
+## SUB-AGENTS
+
+Delegate complex or isolated work to sub-agents to keep the primary context window clean and focused.
+
+- When to delegate: Use sub-agents for research, exploratory coding, and large, self-contained tasks. Implement small, direct changes immediately in the main context.
+- Parallel vs. sequential execution: Run sub-agents in parallel only when tasks involve disjoint files and decoupled interfaces. Execute sequentially when sub-agents touch shared code or depend on each other's outputs.
+- Explicit prompting: Provide sub-agents with complete context up-front: explicit goals, exact target files, coding standards, Nim-specific constraints (e.g., performance rules, memory ownership), and expected deliverables.
+- Context hygiene: Summarize and integrate only the necessary results or code diffs back into the main context; do not dump raw sub-agent logs.
+- Strict verification: Inspect and test all sub-agent output (verify compilation and test suites) before marking the delegated task as complete.
 
 ## DEBUG TRACING
 
@@ -357,8 +386,3 @@ Keep those paths valid relative to `simple.nim`.
 - `doc/todo.md` records the author's intended direction and unresolved ideas;
   do not treat it as an approved implementation plan.
   You may add you own proposals to the end of it.
-
-## Nim Coding Conventions
-
-Follow Nim NEP 1 unless this section overrides it. Mirror the existing style
-of the module being changed.

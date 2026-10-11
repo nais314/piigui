@@ -83,6 +83,21 @@ proc setDrawBlendMode*(renderer: Renderer, blendMode: BlendMode): bool = setRend
 #proc renderTexture*(renderer: Renderer, texture: Texture, srcrect: ptr FRect, dstrect: FRect): bool = renderTexture(renderer, texture, srcrect, dstrect.addr)
 proc present*(renderer: Renderer): bool = renderPresent(renderer)
 
+
+#*=================================================
+#*             TEXTURE TINT
+#*=================================================
+
+proc applyTint*(texture: Texture, tint: Color): bool =
+  ## RGB-only modulation applied to subsequent render copies; the tint alpha is
+  ## not used. See `clearTint` to restore the identity modulation afterwards.
+  result = texture.setTextureColorMod(tint.r, tint.g, tint.b)
+
+proc clearTint*(texture: Texture): bool =
+  ## Resets color modulation to white so later copies render untinted.
+  result = texture.setTextureColorMod(255'u8, 255'u8, 255'u8)
+
+
 #######################################################
 # not SDL extras
 #######################################################

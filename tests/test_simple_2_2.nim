@@ -171,14 +171,14 @@ block scrollViewChecks:
   doAssert textinput4.w > 0
   sendKey(textinput4, sdl.SDLK_END)
   doAssert textinput4.maxScreenCursorPos < textinput4.valRuneLen # must scroll
-  doAssert textinput4.scrollOffset ==
+  doAssert textinput4.firsVisibleRune ==
     max(0, textinput4.valRuneLen - textinput4.maxScreenCursorPos)
   doAssert textinput4.screenCursorPos == textinput4.maxScreenCursorPos
-  doAssert textinput4.valCursorPos - textinput4.scrollOffset ==
+  doAssert textinput4.valCursorPos - textinput4.firsVisibleRune ==
     textinput4.screenCursorPos
 
   sendKey(textinput4, sdl.SDLK_HOME)
-  doAssert textinput4.scrollOffset == 0
+  doAssert textinput4.firsVisibleRune == 0
   doAssert textinput4.screenCursorPos == 0
   doAssert textinput4.valCursorPos == 0
 
@@ -187,10 +187,10 @@ block scrollViewChecks:
     sendKey(textinput4, sdl.SDLK_RIGHT)
   doAssert textinput4.valCursorPos == textinput4.valRuneLen
   doAssert textinput4.screenCursorPos <= textinput4.maxScreenCursorPos
-  doAssert textinput4.valCursorPos - textinput4.scrollOffset ==
+  doAssert textinput4.valCursorPos - textinput4.firsVisibleRune ==
     textinput4.screenCursorPos
   echo "[test_simple_2_2] scroll checks passed: max column ",
-    textinput4.maxScreenCursorPos, ", scroll offset ", textinput4.scrollOffset
+    textinput4.maxScreenCursorPos, ", scroll offset ", textinput4.firsVisibleRune
 
 #*#############################################
 #!        ---== MAIN LOOP AHEAD ==---
